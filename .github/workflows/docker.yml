@@ -75,27 +75,35 @@ jobs:
           test -s smoke-data/server.json
           test -s smoke-data/keys.env
           test -s smoke-data/vless-link.txt
-          # no client config on the server side
-          test ! -e smoke-data/client.json
+          test -s smoke-data/client.json
+          test -s smoke-data/connection-info.txt
           test "$(stat -c %a smoke-data/keys.env)" = "600"
-          # post-quantum VLESS encryption (ML-KEM-768) in the server config
+          # post-quantum VLESS encryption (ML-KEM-768)
           grep -q 'mlkem768x25519plus.native.600s' smoke-data/server.json
+          grep -q 'mlkem768x25519plus.native.0rtt' smoke-data/client.json
           # REALITY + XHTTP + Vision + camouflage host
           grep -q '"security": "reality"' smoke-data/server.json
           grep -q '"network": "xhttp"' smoke-data/server.json
           grep -q 'xtls-rprx-vision' smoke-data/server.json
           grep -q 'www.lovelive-anime.jp' smoke-data/server.json
+          # client config points at the node and ships local inbounds
+          grep -q '"protocol": "vless"' smoke-data/client.json
+          grep -q '"port": 10808' smoke-data/client.json
+          grep -q '"port": 10809' smoke-data/client.json
           # share link carries the right query params for v2rayN
           grep -q 'type=xhttp' smoke-data/vless-link.txt
           grep -q 'security=reality' smoke-data/vless-link.txt
           grep -q 'encryption=mlkem768x25519plus' smoke-data/vless-link.txt
           grep -q 'flow=xtls-rprx-vision' smoke-data/vless-link.txt
 
-      - name: re-validate server config with the shipped binary
+      - name: re-validate configs with the shipped binary
         run: |
           docker run --rm --entrypoint /usr/local/bin/xray \
             -v "$PWD/smoke-data:/data" local/xray-node:smoke \
             run -test -c /data/server.json
+          docker run --rm --entrypoint /usr/local/bin/xray \
+            -v "$PWD/smoke-data:/data" local/xray-node:smoke \
+            run -test -c /data/client.json
 
       - name: summary
         run: |
