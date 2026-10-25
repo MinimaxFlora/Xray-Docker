@@ -1,5 +1,14 @@
 # Xray 一键节点：XHTTP + VLESS Encryption (ML-KEM-768) + Vision + REALITY
 
+[![build](https://github.com/MinimaxFlora/Xray-Docker/actions/workflows/docker.yml/badge.svg)](https://github.com/MinimaxFlora/Xray-Docker/actions/workflows/docker.yml)
+
+预构建镜像（amd64 + arm64）：
+
+```bash
+docker pull dockorae/xray-xhttp-reality-pq:v26.10.21    # Docker Hub
+docker pull ghcr.io/minimaxflora/xray-docker:v26.10.21  # GitHub Container Registry
+```
+
 在 VPS 上 `docker compose up -d --build` 一条命令起一个节点，
 **UUID、REALITY x25519 密钥对、shortId、XHTTP 路径、后量子 VLESS Encryption 密钥全部自动生成**，
 生成完直接给你 `vless://` 分享链接和 `client.json`，客户端粘一下就完事。
