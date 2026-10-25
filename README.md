@@ -5,8 +5,8 @@
 预构建镜像（amd64 + arm64）：
 
 ```bash
-docker pull dockorae/xray-xhttp-reality-pq:v26.10.21    # Docker Hub
-docker pull ghcr.io/minimaxflora/xray-docker:v26.10.21  # GitHub Container Registry
+docker pull dockorae/xray-core:v26.10.21    # Docker Hub
+docker pull ghcr.io/minimaxflora/xray-core:v26.10.21  # GitHub Container Registry
 ```
 
 在 VPS 上 `docker compose up -d --build` 一条命令起一个节点，
@@ -268,26 +268,27 @@ gh secret set DOCKERHUB_TOKEN    --body "<新生成的 access token>"
 ```bash
 git init && git add . && git commit -m "xray xhttp + reality + pq node"
 git remote add origin git@github.com:<you>/<repo>.git
-git push -u origin main
-git tag v1.0.0 && git push --tags     # 可选：打 tag 额外产生 1.0.0 / 1.0
+git push -u origin main                # push 到 main 就等于发版：覆盖 v26.10.21 + latest
 ```
 
 也可以 Actions 页面 → `build` → Run workflow 手动跑。
 
-以当前仓库（内核 `v26.10.21`）+ `main` 分支 + `v1.0.0` tag 为例，产出标签：
+以当前仓库（内核 `v26.10.21`）为例，**只产出两个标签**：
 
 | 标签 | 含义 |
 |---|---|
 | **`v26.10.21`** | **跟随内置 Xray 内核版本**，由 `XRAY_IMAGE` 自动推出（`26.10.21` → `v26.10.21`）；升级内核只需改 `XRAY_IMAGE` |
 | `latest` | 默认分支的最新构建 |
-| `main` | 分支名 |
-| `sha-xxxxxxx` | 提交 SHA |
-| `1.0.0`、`1.0` | 你自己给本仓库打的 `v*` tag（可选） |
+
+不产出 `sha-xxxxxxx` / 分支名 / 语义化版本这类标签，registry 里永远只有这两个名字。
 
 即：
 
-* `ghcr.io/minimaxflora/xray-docker:v26.10.21`
-* `docker.io/dockorae/xray-xhttp-reality-pq:v26.10.21`
+* `ghcr.io/minimaxflora/xray-core:v26.10.21`
+* `docker.io/dockorae/xray-core:v26.10.21`
+
+> `XRAY_IMAGE` 必须写明版本号（如 `:26.10.21`），否则 workflow 直接报错退出，
+> 避免出现 `vlatest` 这种没有意义的 tag。
 
 ### 8.3 用推好的镜像代替本地 build
 
@@ -297,8 +298,8 @@ VPS 上就不需要 `--build` 了，把 `docker-compose.yml` 的 `build:` 段删
 services:
   xray:
     # 锁定内核版本，升级时把 tag 一起改（v26.10.21 -> v新版本）
-    image: docker.io/dockorae/xray-xhttp-reality-pq:v26.10.21
-    # 或 ghcr.io/minimaxflora/xray-docker:v26.10.21
+    image: docker.io/dockorae/xray-core:v26.10.21
+    # 或 ghcr.io/minimaxflora/xray-core:v26.10.21
 ```
 
 然后 `docker compose pull && docker compose up -d`（`data/keys.env` 不变，客户端不掉线）。

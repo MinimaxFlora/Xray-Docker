@@ -21,7 +21,7 @@ env:
   # official Xray binary that gets baked into the image
   XRAY_IMAGE: ghcr.io/xtls/xray-core:26.10.21
   # image name used on docker hub (and as the local tag during smoke test)
-  IMAGE_NAME: xray-xhttp-reality-pq
+  IMAGE_NAME: xray-core
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -139,6 +139,9 @@ jobs:
           echo "XRAY_IMAGE=${XRAY_IMAGE}" >> "$GITHUB_ENV"
           # image tag follows the bundled Xray core version, e.g. v26.10.21
           XRAY_TAG="${XRAY_IMAGE##*:}"
+          case "$XRAY_TAG" in
+            */*|"") echo "::error::XRAY_IMAGE must be pinned to a version, e.g. ghcr.io/xtls/xray-core:26.10.21"; exit 1 ;;
+          esac
           echo "XRAY_TAG=${XRAY_TAG}" >> "$GITHUB_ENV"
           echo "Xray core version tag: v${XRAY_TAG}"
 
@@ -157,10 +160,6 @@ jobs:
           images: ${{ env.GHCR_IMAGE }}
           tags: |
             type=raw,value=v${{ env.XRAY_TAG }}
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,format=short
             type=raw,value=latest,enable={{is_default_branch}}
           labels: |
             org.opencontainers.image.title=Xray XHTTP + REALITY + VLESS Encryption node
@@ -198,10 +197,6 @@ jobs:
           images: ${{ env.DOCKERHUB_IMAGE }}
           tags: |
             type=raw,value=v${{ env.XRAY_TAG }}
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,format=short
             type=raw,value=latest,enable={{is_default_branch}}
           labels: |
             org.opencontainers.image.title=Xray XHTTP + REALITY + VLESS Encryption node
