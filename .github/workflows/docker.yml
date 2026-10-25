@@ -129,7 +129,7 @@ jobs:
 
       - name: compute image names
         run: |
-          echo "GHCR_IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+          echo "GHCR_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${IMAGE_NAME}" >> "$GITHUB_ENV"
           if [ -n "${DOCKERHUB_USERNAME}" ]; then
             echo "DOCKERHUB_IMAGE=docker.io/${DOCKERHUB_USERNAME}/${IMAGE_NAME}" >> "$GITHUB_ENV"
           else
