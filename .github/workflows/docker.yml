@@ -219,7 +219,29 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: summary
+      # keeps the docker hub "Overview" tab in sync with README.md
+      - name: sync docker hub overview
+        if: env.DOCKERHUB_IMAGE != ''
+        run: |
+          jq -n --arg u "$DOCKERHUB_USERNAME" --arg p "$DOCKERHUB_TOKEN" \
+            '{username:$u,password:$p}' > /tmp/dh_login.json
+          JWT=$(curl -sf -X POST -H 'Content-Type: application/json' \
+                  --data-binary @/tmp/dh_login.json \
+                  https://hub.docker.com/v2/users/login | jq -r '.token // empty')
+          if [ -z "$JWT" ]; then
+            echo "::warning::docker hub login failed, overview not updated"
+            exit 0
+          fi
+          jq -n --arg desc "Xray in Docker: XHTTP + VLESS-Encryption (ML-KEM-768) + Vision + REALITY, auto keys" \
+                --rawfile readme README.md \
+            '{description:$desc, full_description:$readme}' > /tmp/dh_patch.json
+          curl -sf -o /dev/null -w 'overview updated, http=%{http_code}\n' \
+            -X PATCH -H "Authorization: JWT ${JWT}" -H 'Content-Type: application/json' \
+            --data-binary @/tmp/dh_patch.json \
+            "https://hub.docker.com/v2/repositories/${DOCKERHUB_USERNAME}/${IMAGE_NAME}/" \
+            || echo "::warning::could not update docker hub overview (token needs Read & Write scope)"
+
+      - name: summary (publish)
         run: |
           {
             echo "### published"
