@@ -42,6 +42,11 @@ jobs:
       - name: docker compose config (validates compose + .env interpolation)
         run: docker compose config -q
 
+      - name: shell syntax check (install.sh + entrypoint.sh)
+        run: |
+          bash -n install.sh
+          sh -n docker/entrypoint.sh
+
       - name: build local image
         uses: docker/build-push-action@v7
         with:
