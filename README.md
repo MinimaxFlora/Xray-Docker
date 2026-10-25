@@ -13,8 +13,8 @@ docker pull ghcr.io/minimaxflora/xray-core:v26.10.21  # GitHub Container Registr
 **UUID、REALITY x25519 密钥对、shortId、XHTTP 路径、后量子 VLESS Encryption 密钥全部自动生成**，
 生成完直接给你 `vless://` 分享链接和 `client.json`，客户端粘一下就完事。
 
-> 不想用 Docker？仓库里还有 [install.sh](#10-不用-dockerinstallsh-一键脚本vps-原生安装)：
-> 直接装在系统里（systemd），支持 **VLESS + Hysteria2 两个节点**，带菜单、链接和二维码。
+> 不想记 docker compose 命令？用 [`manage.sh`](#10-管理脚本-managesh-docker-compose-的菜单包装)：
+> 一个菜单搞定安装/更新/链接+二维码/导出客户端/轮换密钥/卸载，底层仍然是 docker compose。
 
 伪装站点：`www.lovelive-anime.jp`（可改，见 [换伪装站点](#换伪装站点)）。
 已实测该站点：TLS 1.3 / ALPN `h2` / **X25519MLKEM768 后量子密钥交换** / 证书 `*.lovelive-anime.jp`，
@@ -76,7 +76,7 @@ docker compose logs -f xray                    # 跟踪日志；如果链接里�
 ├── Dockerfile                  # 把官方二进制塞进带 shell 的 alpine（官方镜像是 distroless，没有 sh）
 ├── .dockerignore
 ├── .env                        # 镜像 tag / 端口 / 伪装站点 / 节点名，改完 `docker compose up -d` 即生效
-├── install.sh                  # 不用 Docker 时的原生安装/管理脚本（含 Hysteria2，见第 10 节）
+├── manage.sh                   # docker compose 菜单脚本：安装/链接+二维码/导出客户端（见第 10 节）
 ├── docker/entrypoint.sh        # 生成密钥 + 渲染配置 + 校验 + 启动
 ├── .github/workflows/docker.yml# CI：构建并推送 ghcr.io + Docker Hub（见第 8 节）
 └── data/                       # 挂载进容器的持久目录（首次启动后出现）
@@ -342,99 +342,103 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 ---
 
-## 10. 不用 Docker：install.sh 一键脚本（VPS 原生安装）
 
-`install.sh` 直接把官方 Xray-core 装进系统（systemd 管理），不依赖 Docker。
-一个二进制同时提供**两种节点**，可以只开一种，也可以都开（同一份 `config.json` 里放两个 inbound）：
+## 10. 管理脚本 manage.sh（docker compose 的菜单包装）
 
-| 节点 | 协议/传输 | 端口 | 说明 |
-|---|---|---|---|
-| VLESS | XHTTP + REALITY + Vision + VLESS Encryption (ML-KEM-768) | 443/tcp | 后量子、无需域名证书 |
-| Hysteria2 | Xray 原生 `hysteria` 实现（QUIC） | 443/udp | 自签证书 + 客户端证书 pin |
+`manage.sh` 只是把 `docker compose` 包了一层菜单，**不下载任何二进制、不装 systemd 服务**，
+节点始终跑在容器里：
 
-同端口不冲突：TCP 443 给 VLESS、UDP 443 给 Hysteria2，互不影响。
+* 拉镜像 / 起容器 / 更新 / 卸载
+* 展示节点链接 + 终端二维码（有 `qrencode` 时）+ PNG 二维码
+* 导出客户端 `client.json`
+* 轮换密钥、备份 `data`、看日志
 
 ### 10.1 用起来
 
 ```bash
 git clone https://github.com/MinimaxFlora/Xray-Docker.git && cd Xray-Docker
-sudo bash install.sh
+sudo bash manage.sh
 ```
 
-菜单长这样：
+菜单：
 
 ```
-1) 安装 / 更新 Xray 内核
-2) 部署 / 更新 VLESS 节点 (XHTTP + REALITY + Vision + 后量子)
-3) 部署 / 更新 Hysteria2 节点
-4) 查看节点链接 + 二维码
-5) 重新生成客户端配置
-6) 重启服务      7) 查看日志      8) 开启 BBR      9) 卸载
+基础功能：
+1、安装 / 启动节点        2、更新镜像        3、卸载
+服务管理：
+4、查看状态   5、启动   6、停止   7、重启   8、查看日志
+节点管理：
+9、查看节点链接 + 二维码   10、导出客户端配置   11、轮换节点密钥
+配置管理：
+12、编辑 .env   13、备份 data
+0、退出
 ```
 
-选 1 → 2（或 3）就完事，全程自动生成密钥/密码/证书，最后直接打印：
-
-* `vless://...` 链接 + 终端二维码（有 `qrencode` 时）
-* `hysteria2://...` 链接 + 终端二维码
-
-v2rayN：复制链接 `Ctrl+V` 导入；或者手机直接扫终端里的二维码。
-
-也可以不交互，一条命令部署：
+不想进菜单也可以直接跑：
 
 ```bash
-# 两个节点都开，自动探测公网 IP
-sudo ASSUME_YES=1 SERVER_ADDR= bash install.sh vless
-sudo ASSUME_YES=1 SERVER_ADDR= bash install.sh hy2
-
-# 换伪装站点/端口
-sudo ASSUME_YES=1 SNI=www.example.com VLESS_PORT=443 HY2_PORT=8443 bash install.sh vless
+sudo bash manage.sh install    # 首次：拉镜像 → 起容器 → 等待生成密钥 → 打印链接 + 二维码
+sudo bash manage.sh links      # 再看一次链接 + 二维码
+sudo bash manage.sh client     # 把 data/client.json 导出到当前目录
+sudo bash manage.sh update     # 拉新镜像并重启（密钥不变，客户端不掉线）
+sudo bash manage.sh rotate     # 轮换 UUID / x25519 / shortId / 路径 / 后量子密钥
+sudo bash manage.sh log        # docker compose logs --tail 100
 ```
 
-### 10.2 生成的东西在哪
+`docker compose up -d` 仍然是等价的底层操作，脚本只是替你搞清楚“跑哪条、去哪拿链接”。
 
-| 路径 | 内容 |
+### 10.2 目录约定
+
+| 路径 | 说明 |
 |---|---|
-| `/usr/local/etc/xray/config.json` | **服务端配置**（VPS 只用这个，`xray run -t` 校验过才生效） |
-| `/usr/local/etc/xray/nodes.conf` | 全部密钥（0600），备份它就等于备份节点 |
-| `/usr/local/etc/xray/certs/hy2.crt` / `.key` | Hysteria2 自签证书（10 年） |
-| `/usr/local/bin/xray` | 内核二进制 |
-| `/usr/local/share/xray/geoip.dat`、`geosite.dat` | 路由用的 geo 数据 |
-| `/root/xray-client/client-vless.json` | **客户端配置**（vless，socks 10808 / http 10809） |
-| `/root/xray-client/client-hy2.json` | **客户端配置**（hysteria2） |
-| `/root/xray-client/links.txt` | 两条链接 + 证书 pin（0600） |
-| `/root/xray-client/qr-*.png` | 二维码图片（装了 qrencode 才有） |
+| `./.env` | 镜像 tag / 端口 / 伪装站点 / 节点名（脚本首次运行会生成默认值） |
+| `./data/server.json` | **服务端配置**（容器生成，VPS 上就是它在跑） |
+| `./data/client.json` | **客户端配置**（socks 10808 / http 10809 + 国内直连） |
+| `./data/vless-link.txt` | **节点链接**（`vless://...`） |
+| `./data/connection-info.txt` | 各字段明文，方便手动填客户端 |
+| `./data/keys.env` | 全部密钥（0600），备份它就等于备份节点 |
+| `./data/qr-vless.png` | 二维码图片（装了 qrencode 才有） |
+| `./client.json` | 菜单 10 导出的客户端配置副本 |
 
-拉到本地：
+### 10.3 VPS 和客户端各用哪个文件
 
-```bash
-scp -r root@<VPS>:/root/xray-client ./xray-client
-```
+* **VPS**：容器读 `data/server.json`，你不用管，`docker compose up -d` 起就完事。
+* **客户端**：`data/client.json`（或 `manage.sh client` 导出的 `client.json`）。
 
-客户端 `xray run -c client-vless.json`（或 `client-hy2.json`）就能用；
-Windows 系统代理指到 `127.0.0.1:10809`（HTTP）或 `127.0.0.1:10808`（SOCKS5）。
-
-### 10.3 关于 Hysteria2 的证书
-
-没有域名，脚本会用 `xray tls cert` 生成**自签证书**（SAN 就是你的 SNI/IP，10 年有效），因此：
-
-* 链接里带 `insecure=1` → v2rayN / NekoBox / sing-box 这类客户端直接能用（跳过校验，仍加密，但理论上可被中间人）。
-* `client-hy2.json` 里用的是 **证书 pin**（`pinnedPeerCertSha256`），不跳过校验，安全性更好 —— 适合用 Xray 内核的客户端。
-* `links.txt` 里也单独给了一行 pin 值，支持 `pinSHA256` 参数的客户端可以换上去。
-* 有域名的话，把 `HY2_SNI` 指向这个域名，再换成 ACME 证书（把 `hy2.crt/key` 替换掉即可）。
-
-### 10.4 常用命令
+客户端侧：
 
 ```bash
-sudo bash install.sh links      # 再看一次链接 + 二维码
-sudo bash install.sh client     # 重新生成客户端配置（换 IP 后跑这个）
-sudo bash install.sh restart|stop|start|status|log
-sudo bash install.sh bbr        # 开 BBR
-sudo bash install.sh uninstall  # 卸载（会删配置和密钥）
-FORCE_ROTATE=1 sudo bash install.sh vless   # 轮换 VLESS 密钥（旧客户端失效）
+xray run -c client.json        # socks5 127.0.0.1:10808 / http 127.0.0.1:10809
 ```
 
-改完 `.env` 那套只对 Docker 有效；脚本这边直接改菜单里问的端口/SNI，或者
-`sudo ASSUME_YES=1 SNI=... bash install.sh vless`。
+Windows 系统代理填 `127.0.0.1:10809`；v2rayN 用户直接用 `vless://` 链接导入即可。
 
-> 云安全组记得同时放行 **443/tcp** 和 **443/udp**（Hysteria2 是 UDP）。
-> 脚本会自动尝试 `ufw` / `firewalld` 放行。
+把客户端配置拉到本地：
+
+```bash
+scp root@<VPS_IP>:/root/Xray-Docker/client.json ./client.json
+```
+
+### 10.4 常见问题
+
+**镜像拉不动**
+
+改 `.env` 里的 `IMAGE`：
+
+```ini
+IMAGE=ghcr.io/minimaxflora/xray-core:v26.10.21
+# 或
+IMAGE=ghcr.m.daocloud.io/xtls/xray-core:26.10.21
+```
+
+**链接里是 YOUR_SERVER_IP**
+
+容器探测不到公网 IP。在 `.env` 里写死 `SERVER_ADDR=<IP或域名>`，再 `sudo bash manage.sh restart`。
+
+**端口不是 443**
+
+改 `.env` 的 `PORT`（容器内固定 443），链接会自动跟着变；非 443 会降低 REALITY 伪装效果。
+
+**二维码没出来**
+
+装一下 `qrencode`：`apt install qrencode`（脚本也会自动尝试安装），链接本身不受影响。
