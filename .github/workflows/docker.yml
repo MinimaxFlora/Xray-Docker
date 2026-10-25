@@ -80,16 +80,16 @@ jobs:
           test "$(stat -c %a smoke-data/keys.env)" = "600"
           # post-quantum VLESS encryption (ML-KEM-768)
           grep -q 'mlkem768x25519plus.native.600s' smoke-data/server.json
-          grep -q 'mlkem768x25519plus.native.0rtt' smoke-data/client.json
+          sudo grep -q 'mlkem768x25519plus.native.0rtt' smoke-data/client.json
           # REALITY + XHTTP + Vision + camouflage host
           grep -q '"security": "reality"' smoke-data/server.json
           grep -q '"network": "xhttp"' smoke-data/server.json
           grep -q 'xtls-rprx-vision' smoke-data/server.json
           grep -q 'www.lovelive-anime.jp' smoke-data/server.json
           # client config points at the node and ships local inbounds
-          grep -q '"protocol": "vless"' smoke-data/client.json
-          grep -q '"port": 10808' smoke-data/client.json
-          grep -q '"port": 10809' smoke-data/client.json
+          sudo grep -q '"protocol": "vless"' smoke-data/client.json
+          sudo grep -q '"port": 10808' smoke-data/client.json
+          sudo grep -q '"port": 10809' smoke-data/client.json
           # share link carries the right query params for v2rayN
           grep -q 'type=xhttp' smoke-data/vless-link.txt
           grep -q 'security=reality' smoke-data/vless-link.txt
