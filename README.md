@@ -38,19 +38,16 @@ docker pull ghcr.io/minimaxflora/xray-core:v26.10.21  # GitHub Container Registr
 
 ---
 
-## 2. 部署（3 步）
+## 2. 部署（2 步）
 
 前置：VPS 已装 Docker 24+ 和 compose v2，`443/tcp` 没被占用。
 
 ```bash
-# 1) 把整个目录传到 VPS，例如 /root/xray
-scp -r ./xray root@<你的VPS>:/root/
+# 1) 拿仓库（或者把整个目录 scp 到 VPS）
+git clone https://github.com/MinimaxFlora/Xray-Docker.git && cd Xray-Docker
 
-# 2) 进目录（.env 里默认值就能用，SERVER_ADDR 留空会自动探测公网 IP）
-cd /root/xray
-
-# 3) 起
-docker compose up -d --build
+# 2) 起（直接拉预构建镜像 dockorae/xray-core:v26.10.21，不需要 build）
+docker compose up -d
 ```
 
 首次启动会自动生成全部密钥，十几秒后看结果：
@@ -71,10 +68,11 @@ docker compose logs -f xray                    # 跟踪日志；如果链接里�
 
 ```
 .
-├── docker-compose.yml
+├── docker-compose.yml          # 默认：拉预构建镜像
+├── docker-compose.build.yml    # 可选 overlay：本地 build 时用（见第 8 节）
 ├── Dockerfile                  # 把官方二进制塞进带 shell 的 alpine（官方镜像是 distroless，没有 sh）
 ├── .dockerignore
-├── .env                        # 端口 / 伪装站点 / 节点名，改完 `docker compose up -d` 即生效
+├── .env                        # 镜像 tag / 端口 / 伪装站点 / 节点名，改完 `docker compose up -d` 即生效
 ├── docker/entrypoint.sh        # 生成密钥 + 渲染配置 + 校验 + 启动
 ├── .github/workflows/docker.yml# CI：构建并推送 ghcr.io + Docker Hub（见第 8 节）
 └── data/                       # 挂载进容器的持久目录（首次启动后出现）
@@ -182,12 +180,20 @@ docker compose exec xray xray tls ping www.lovelive-anime.jp   # 服务器能不
 `.env` 里 `PORT=8443`（只改对外端口，容器内仍是 443），链接会自动用 8443。
 注意：非 443 端口会降低 REALITY 的伪装效果，内核也会警告。
 
-**ghcr.io 拉不动（国内 VPS）**
+**镜像拉不动（国内 VPS）**
 
-改 `.env` 的 `XRAY_IMAGE`，例如：
+默认拉的是 `dockorae/xray-core:v26.10.21`，Docker Hub 一般还行；拉不动就换成 ghcr：
 
 ```ini
-XRAY_IMAGE=ghcr.m.daocloud.io/xtls/xray-core:26.10.21
+IMAGE=ghcr.io/minimaxflora/xray-core:v26.10.21
+```
+
+两个都慢时，用本地构建（基础镜像换成国内镜像源）：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml build \
+  --build-arg XRAY_IMAGE=ghcr.m.daocloud.io/xtls/xray-core:26.10.21
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d
 ```
 
 或者先在能上网的机器 `docker save` 再 `docker load`。
@@ -217,7 +223,8 @@ cat data/vless-link.txt                       # 新链接发给客户端
 
 **备份 / 迁移**：只需保住 `data/keys.env`（0600）。把它拷到新机器的同位置，`docker compose up -d` 就是同一个节点。
 
-**升级内核**：改 `.env` 的 `XRAY_IMAGE`（比如 `:latest` 或新版本号）→ `docker compose up -d --build`。
+**升级内核**：把 `.env` 里的 `IMAGE` tag 换成新版本（如 `:v26.11.x`）→ `docker compose pull && docker compose up -d`。
+CI 每次 push 都会按内置内核版本产出 `v<版本>` tag（见第 8 节）。
 
 **性能**：容器内已放宽 `nofile`。宿主建议开 BBR：
 
@@ -290,19 +297,33 @@ git push -u origin main                # push 到 main 就等于发版：覆盖 
 > `XRAY_IMAGE` 必须写明版本号（如 `:26.10.21`），否则 workflow 直接报错退出，
 > 避免出现 `vlatest` 这种没有意义的 tag。
 
-### 8.3 用推好的镜像代替本地 build
+### 8.3 compose 用的是哪个镜像
 
-VPS 上就不需要 `--build` 了，把 `docker-compose.yml` 的 `build:` 段删掉、改成 `image:`：
+`docker-compose.yml` **默认直接拉预构建镜像**，不需要 `build`：
 
 ```yaml
 services:
   xray:
-    # 锁定内核版本，升级时把 tag 一起改（v26.10.21 -> v新版本）
-    image: docker.io/dockorae/xray-core:v26.10.21
-    # 或 ghcr.io/minimaxflora/xray-core:v26.10.21
+    image: ${IMAGE:-dockorae/xray-core:v26.10.21}
 ```
 
-然后 `docker compose pull && docker compose up -d`（`data/keys.env` 不变，客户端不掉线）。
+`.env` 里改一行就能换来源/版本：
+
+```ini
+IMAGE=dockorae/xray-core:v26.10.21
+# IMAGE=ghcr.io/minimaxflora/xray-core:v26.10.21
+```
+
+升级：`docker compose pull && docker compose up -d`（`data/keys.env` 不变，客户端不掉线）。
+
+**想本地构建**（不依赖 registry）用 overlay，主 compose 不用改：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+```
+
+`docker-compose.build.yml` 里会用 `XRAY_IMAGE`（默认 `ghcr.io/xtls/xray-core:26.10.21`，
+即官方 distroless 镜像）作为基础镜像，产物本地 tag 为 `xray-core:local`。
 
 私有仓库的 ghcr 包要先登录才能拉：`echo <PAT> | docker login ghcr.io -u <owner>`；
 要公开拉取就去 Packages → 该包 → Package settings → Change visibility → Public。

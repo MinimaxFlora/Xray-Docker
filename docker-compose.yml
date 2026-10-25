@@ -2,14 +2,15 @@
 #  Xray one-click node
 #  XHTTP + VLESS Encryption (ML-KEM-768) + XTLS Vision + REALITY
 #  secrets (uuid / x25519 / shortId / vlessenc) are generated on first start
+#
+#  Default: pull the published multi-arch image (amd64/arm64).
+#  Local build instead:
+#     docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 # ===========================================================================
 services:
   xray:
-    build:
-      context: .
-      args:
-        XRAY_IMAGE: ${XRAY_IMAGE:-ghcr.io/xtls/xray-core:26.10.21}
-    image: xray-xhttp-reality-pq:local
+    # tag follows the bundled Xray core version (v26.10.21 -> core 26.10.21)
+    image: ${IMAGE:-dockorae/xray-core:v26.10.21}
     container_name: xray
     restart: unless-stopped
     stop_grace_period: 10s
