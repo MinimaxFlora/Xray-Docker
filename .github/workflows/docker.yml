@@ -42,9 +42,9 @@ jobs:
       - name: docker compose config (validates compose + .env interpolation)
         run: docker compose config -q
 
-      - name: shell syntax check (install.sh + entrypoint.sh)
+      - name: shell syntax check (manage.sh + entrypoint.sh)
         run: |
-          bash -n install.sh
+          bash -n manage.sh
           sh -n docker/entrypoint.sh
 
       - name: build local image
