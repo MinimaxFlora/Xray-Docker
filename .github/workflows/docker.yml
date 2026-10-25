@@ -137,6 +137,10 @@ jobs:
             echo "::warning::DOCKERHUB_USERNAME / DOCKERHUB_TOKEN not set, skipping docker hub"
           fi
           echo "XRAY_IMAGE=${XRAY_IMAGE}" >> "$GITHUB_ENV"
+          # image tag follows the bundled Xray core version, e.g. v26.10.21
+          XRAY_TAG="${XRAY_IMAGE##*:}"
+          echo "XRAY_TAG=${XRAY_TAG}" >> "$GITHUB_ENV"
+          echo "Xray core version tag: v${XRAY_TAG}"
 
       # ---------------------------- ghcr.io -----------------------------------
       - name: login to ghcr.io
@@ -152,6 +156,7 @@ jobs:
         with:
           images: ${{ env.GHCR_IMAGE }}
           tags: |
+            type=raw,value=v${{ env.XRAY_TAG }}
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -161,6 +166,7 @@ jobs:
             org.opencontainers.image.title=Xray XHTTP + REALITY + VLESS Encryption node
             org.opencontainers.image.description=One-click Xray node: XHTTP + VLESS Encryption (ML-KEM-768) + XTLS Vision + REALITY, keys auto generated
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=v${{ env.XRAY_TAG }}
 
       - name: build & push to ghcr.io
         uses: docker/build-push-action@v7
@@ -191,6 +197,7 @@ jobs:
         with:
           images: ${{ env.DOCKERHUB_IMAGE }}
           tags: |
+            type=raw,value=v${{ env.XRAY_TAG }}
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -199,6 +206,7 @@ jobs:
           labels: |
             org.opencontainers.image.title=Xray XHTTP + REALITY + VLESS Encryption node
             org.opencontainers.image.description=One-click Xray node: XHTTP + VLESS Encryption (ML-KEM-768) + XTLS Vision + REALITY, keys auto generated
+            org.opencontainers.image.version=v${{ env.XRAY_TAG }}
 
       - name: build & push to docker hub
         if: env.DOCKERHUB_IMAGE != ''

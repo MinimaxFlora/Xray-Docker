@@ -265,10 +265,20 @@ git tag v1.0.0 && git push --tags     # 可选：打 tag 额外产生 1.0.0 / 1.
 
 也可以 Actions 页面 → `build` → Run workflow 手动跑。
 
-以 `main` 分支 + `v1.0.0` tag 为例，产出标签：
+以当前仓库（内核 `v26.10.21`）+ `main` 分支 + `v1.0.0` tag 为例，产出标签：
 
-* `ghcr.io/<owner>/<repo>:` `latest`、`main`、`sha-xxxxxxx`、`1.0.0`、`1.0`
-* `docker.io/<user>/xray-xhttp-reality-pq:` 同上
+| 标签 | 含义 |
+|---|---|
+| **`v26.10.21`** | **跟随内置 Xray 内核版本**，由 `XRAY_IMAGE` 自动推出（`26.10.21` → `v26.10.21`）；升级内核只需改 `XRAY_IMAGE` |
+| `latest` | 默认分支的最新构建 |
+| `main` | 分支名 |
+| `sha-xxxxxxx` | 提交 SHA |
+| `1.0.0`、`1.0` | 你自己给本仓库打的 `v*` tag（可选） |
+
+即：
+
+* `ghcr.io/minimaxflora/xray-docker:v26.10.21`
+* `docker.io/dockorae/xray-xhttp-reality-pq:v26.10.21`
 
 ### 8.3 用推好的镜像代替本地 build
 
@@ -277,7 +287,9 @@ VPS 上就不需要 `--build` 了，把 `docker-compose.yml` 的 `build:` 段删
 ```yaml
 services:
   xray:
-    image: docker.io/<user>/xray-xhttp-reality-pq:latest   # 或 ghcr.io/<owner>/<repo>:latest
+    # 锁定内核版本，升级时把 tag 一起改（v26.10.21 -> v新版本）
+    image: docker.io/dockorae/xray-xhttp-reality-pq:v26.10.21
+    # 或 ghcr.io/minimaxflora/xray-docker:v26.10.21
 ```
 
 然后 `docker compose pull && docker compose up -d`（`data/keys.env` 不变，客户端不掉线）。
