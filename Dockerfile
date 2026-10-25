@@ -14,7 +14,7 @@ FROM ${XRAY_IMAGE} AS xray
 
 FROM alpine:3
 
-RUN apk add --no-cache ca-certificates tzdata qrencode \
+RUN apk add --no-cache ca-certificates tzdata \
     && update-ca-certificates
 
 COPY --from=xray /usr/local/bin/xray /usr/local/bin/xray
