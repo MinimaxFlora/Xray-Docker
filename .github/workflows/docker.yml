@@ -1,0 +1,234 @@
+name: build
+
+# Builds this node image, smoke-tests the config generator, then publishes to
+#   ghcr.io/<owner>/<repo>            (uses the built-in GITHUB_TOKEN)
+#   docker.io/<DOCKERHUB_USERNAME>/xray-xhttp-reality-pq  (needs 2 repo secrets)
+#
+# Required secrets for Docker Hub (Settings -> Secrets and variables -> Actions):
+#   DOCKERHUB_USERNAME   your docker hub account name
+#   DOCKERHUB_TOKEN      an access token with Read & Write scope
+# ghcr.io needs no secret at all, GITHUB_TOKEN is enough (packages: write below).
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  # official Xray binary that gets baked into the image
+  XRAY_IMAGE: ghcr.io/xtls/xray-core:26.10.21
+  # image name used on docker hub (and as the local tag during smoke test)
+  IMAGE_NAME: xray-xhttp-reality-pq
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. build the image for amd64 and prove that keygen + configs are valid
+  # ---------------------------------------------------------------------------
+  smoke:
+    name: smoke test (keygen + xray -test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: docker compose config (validates compose + .env interpolation)
+        run: docker compose config -q
+
+      - name: build local image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: local/xray-node:smoke
+          build-args: |
+            XRAY_IMAGE=${{ env.XRAY_IMAGE }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: generate a fresh key set
+        run: |
+          mkdir -p smoke-data
+          docker run --rm \
+            -e LISTEN_PORT=443 \
+            -e PUBLIC_PORT=443 \
+            -e SERVER_ADDR=127.0.0.1 \
+            -e NODE_NAME=ci-smoke \
+            -v "$PWD/smoke-data:/data" \
+            local/xray-node:smoke keygen
+
+      - name: assert generated artifacts
+        run: |
+          set -eux
+          test -s smoke-data/server.json
+          test -s smoke-data/client.json
+          test -s smoke-data/keys.env
+          test -s smoke-data/vless-link.txt
+          test "$(stat -c %a smoke-data/keys.env)" = "600"
+          # post-quantum VLESS encryption (ML-KEM-768) must be in both configs
+          grep -q 'mlkem768x25519plus.native.600s' smoke-data/server.json
+          grep -q 'mlkem768x25519plus.native.0rtt' smoke-data/client.json
+          # REALITY + XHTTP + Vision + camouflage host
+          grep -q '"security": "reality"' smoke-data/server.json
+          grep -q '"network": "xhttp"' smoke-data/server.json
+          grep -q 'xtls-rprx-vision' smoke-data/server.json
+          grep -q 'www.lovelive-anime.jp' smoke-data/server.json
+          # share link carries the right query params for v2rayN
+          grep -q 'type=xhttp' smoke-data/vless-link.txt
+          grep -q 'security=reality' smoke-data/vless-link.txt
+          grep -q 'encryption=mlkem768x25519plus' smoke-data/vless-link.txt
+          grep -q 'flow=xtls-rprx-vision' smoke-data/vless-link.txt
+
+      - name: re-validate configs with the shipped binary
+        run: |
+          docker run --rm --entrypoint /usr/local/bin/xray \
+            -v "$PWD/smoke-data:/data" local/xray-node:smoke \
+            run -test -c /data/server.json
+          docker run --rm --entrypoint /usr/local/bin/xray \
+            -v "$PWD/smoke-data:/data" local/xray-node:smoke \
+            run -test -c /data/client.json
+
+      - name: summary
+        run: |
+          {
+            echo "### smoke test passed"
+            echo ""
+            echo "generated link (truncated):"
+            echo ""
+            echo '```'
+            cut -c1-160 smoke-data/vless-link.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # 2. multi-arch build & push (amd64 + arm64)
+  # ---------------------------------------------------------------------------
+  publish:
+    name: publish (ghcr.io + docker hub)
+    needs: smoke
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: compute image names
+        run: |
+          echo "GHCR_IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+          if [ -n "${DOCKERHUB_USERNAME}" ]; then
+            echo "DOCKERHUB_IMAGE=docker.io/${DOCKERHUB_USERNAME}/${IMAGE_NAME}" >> "$GITHUB_ENV"
+          else
+            echo "DOCKERHUB_IMAGE=" >> "$GITHUB_ENV"
+            echo "::warning::DOCKERHUB_USERNAME / DOCKERHUB_TOKEN not set, skipping docker hub"
+          fi
+          echo "XRAY_IMAGE=${XRAY_IMAGE}" >> "$GITHUB_ENV"
+
+      # ---------------------------- ghcr.io -----------------------------------
+      - name: login to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: meta (ghcr)
+        id: meta_ghcr
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.GHCR_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+          labels: |
+            org.opencontainers.image.title=Xray XHTTP + REALITY + VLESS Encryption node
+            org.opencontainers.image.description=One-click Xray node: XHTTP + VLESS Encryption (ML-KEM-768) + XTLS Vision + REALITY, keys auto generated
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      - name: build & push to ghcr.io
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          tags: ${{ steps.meta_ghcr.outputs.tags }}
+          labels: ${{ steps.meta_ghcr.outputs.labels }}
+          build-args: |
+            XRAY_IMAGE=${{ env.XRAY_IMAGE }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ---------------------------- docker hub --------------------------------
+      - name: login to docker hub
+        if: env.DOCKERHUB_TOKEN != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
+
+      - name: meta (docker hub)
+        if: env.DOCKERHUB_IMAGE != ''
+        id: meta_dockerhub
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKERHUB_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+          labels: |
+            org.opencontainers.image.title=Xray XHTTP + REALITY + VLESS Encryption node
+            org.opencontainers.image.description=One-click Xray node: XHTTP + VLESS Encryption (ML-KEM-768) + XTLS Vision + REALITY, keys auto generated
+
+      - name: build & push to docker hub
+        if: env.DOCKERHUB_IMAGE != ''
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          tags: ${{ steps.meta_dockerhub.outputs.tags }}
+          labels: ${{ steps.meta_dockerhub.outputs.labels }}
+          build-args: |
+            XRAY_IMAGE=${{ env.XRAY_IMAGE }}
+          # the ghcr build above already filled the cache, so this is cheap
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: summary
+        run: |
+          {
+            echo "### published"
+            echo ""
+            echo "ghcr.io:"
+            echo '```'
+            echo "${{ steps.meta_ghcr.outputs.tags }}"
+            echo '```'
+            if [ -n "${DOCKERHUB_IMAGE}" ]; then
+              echo "docker hub:"
+              echo '```'
+              echo "${{ steps.meta_dockerhub.outputs.tags }}"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

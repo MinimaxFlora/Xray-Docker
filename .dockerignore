@@ -1,0 +1,9 @@
+# keep the build context tiny: only Dockerfile + docker/entrypoint.sh are needed
+.git/
+.github/
+data/
+.env
+*.md
+*.log
+_test/
+smoke-data/

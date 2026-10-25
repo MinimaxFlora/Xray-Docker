@@ -1,0 +1,48 @@
+# ===========================================================================
+#  Xray one-click node
+#  XHTTP + VLESS Encryption (ML-KEM-768) + XTLS Vision + REALITY
+#  secrets (uuid / x25519 / shortId / vlessenc) are generated on first start
+# ===========================================================================
+services:
+  xray:
+    build:
+      context: .
+      args:
+        XRAY_IMAGE: ${XRAY_IMAGE:-ghcr.io/xtls/xray-core:26.10.21}
+    image: xray-xhttp-reality-pq:local
+    container_name: xray
+    restart: unless-stopped
+    stop_grace_period: 10s
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      # xray always listens on 443 inside the container
+      LISTEN_PORT: "443"
+      # port the client connects to (host mapping + share link)
+      PUBLIC_PORT: ${PORT:-443}
+      # camouflage site: REALITY target AND serverName, must speak TLS1.3 + h2
+      SNI: ${SNI:-www.lovelive-anime.jp}
+      # public IP / domain of this VPS, empty = auto detect
+      SERVER_ADDR: ${SERVER_ADDR:-}
+      # node name shown in the client (ASCII only)
+      NODE_NAME: ${NODE_NAME:-XHTTP-Reality-PQ}
+      # 1 = rotate every key on this start (remember to set it back to 0)
+      REGEN: ${REGEN:-0}
+    ports:
+      - "${PORT:-443}:443/tcp"
+    volumes:
+      - ./data:/data
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # ---------------------------------------------------------------------
+    # Optional, slightly faster on a Linux VPS (skips docker NAT):
+    # comment out `ports:` above and uncomment the two lines below.
+    # network_mode: host
+    # ---------------------------------------------------------------------

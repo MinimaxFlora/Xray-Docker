@@ -1,0 +1,7 @@
+# runtime secrets / generated configs
+data/
+
+# local test artifacts
+_test/
+*.log
+*.tmp
