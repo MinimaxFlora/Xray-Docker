@@ -11,7 +11,7 @@ docker pull ghcr.io/minimaxflora/xray-core:v26.10.21  # GitHub Container Registr
 
 在 VPS 上 `docker compose up -d --build` 一条命令起一个节点，
 **UUID、REALITY x25519 密钥对、shortId、XHTTP 路径、后量子 VLESS Encryption 密钥全部自动生成**，
-生成完直接给你 `vless://` 分享链接和 `client.json`，客户端粘一下就完事。
+部署完直接弹出 `vless://` 链接（+ 二维码），客户端粘一下就完事；VPS 上只生成服务端配置。
 
 > 不想记 docker compose 命令？用 [`manage.sh`](#10-管理脚本-managesh-docker-compose-的菜单包装)：
 > 一个菜单搞定安装/更新/链接+二维码/导出客户端/轮换密钥/卸载，底层仍然是 docker compose。
@@ -82,7 +82,6 @@ docker compose logs -f xray                    # 跟踪日志；如果链接里�
 └── data/                       # 挂载进容器的持久目录（首次启动后出现）
     ├── keys.env                # ★ 全部私密材料（0600）：UUID、私钥、shortId、vlessenc 对
     ├── server.json             # 服务端完整配置（自动 -test 过才启动）
-    ├── client.json             # 客户端完整配置（socks 10808 + http 10809 + 国内直连）
     ├── vless-link.txt          # vless:// 分享链接
     └── connection-info.txt     # 人读的字段清单
 ```
@@ -90,7 +89,7 @@ docker compose logs -f xray                    # 跟踪日志；如果链接里�
 幂等性：
 
 * `keys.env` 存在 → 复用，**重启/重装容器不会换密钥**（客户端不会掉）。
-* 每次启动都会用 `keys.env` + `.env` 重新渲染 `server.json` / `client.json` / 链接，
+* 每次启动都会用 `keys.env` + `.env` 重新渲染 `server.json` 和链接，
   所以改端口、改 IP、改节点名只需 `docker compose up -d`，不用手动改 JSON。
 * 渲染完会跑 `xray run -test`，配置不合法就拒绝启动并打印原因。
 
@@ -113,25 +112,21 @@ vless://<uuid>@<ip>:443?encryption=mlkem768x25519plus.native.0rtt.<...>&flow=xtl
 **版本要求**：客户端内核必须支持 VLESS Encryption，也就是 **Xray-core ≥ 25.10**（请用近期 v2rayN，
 并在 `设置 → 内核` 里把 Xray 更新到最新）。旧内核会报 `unsupported encryption` 或直接连不上。
 
-### 4.2 只要有完整配置的客户端
+### 4.2 其他客户端
 
-把 `data/client.json` 当普通 Xray 配置跑：
+节点就是一条 `vless://` 链接，凡是支持 **VLESS + XHTTP + REALITY + VLESS Encryption**
+的客户端（NekoBox / sing-box / Hiddify / mihomo 新版等）都能直接导入，不需要额外的客户端配置文件：
 
 ```bash
-xray run -c client.json
+cat data/vless-link.txt        # 复制整行即可
+sudo bash manage.sh links      # 顺便打印二维码，手机扫码导入
 ```
-
-它自带：
-
-* `socks5 127.0.0.1:10808`（UDP 已开）
-* `http 127.0.0.1:10809`
-* 路由：私有地址 + `geoip:cn` + `geosite:cn` → 直连，其余走节点
 
 ### 4.3 系统代理
 
 * 用 v2rayN 的话，它自己会设 Windows 系统代理，不用管。
-* 用 `client.json` 的话，Windows「设置 → 网络和 Internet → 代理 → 手动设置」填
-  `127.0.0.1:10809`（HTTP 代理）；或用 PAC/`socks5://127.0.0.1:10808`。macOS/Linux 同理。
+* 手机客户端一般就是全局 / TUN 模式，也不用单独设代理。
+* 需要手动设代理时，填客户端本地的混入端口：`127.0.0.1:10809`（HTTP）或 `127.0.0.1:10808`（SOCKS5）。
 
 ---
 
@@ -247,7 +242,7 @@ sysctl -p && sysctl net.ipv4.tcp_congestion_control
 
 | job | 触发 | 干了什么 |
 |---|---|---|
-| `smoke` | push / PR / 手动 | 构建 amd64 镜像 → 跑一遍 `keygen` → 断言 `keys.env` 权限 600、server/client 里含 `mlkem768x25519plus`、链接带 `type=xhttp`/`security=reality`/`flow=xtls-rprx-vision` → 再用镜像内的 xray 对两份配置跑 `-test` |
+| `smoke` | push / PR / 手动 | 构建 amd64 镜像 → 跑一遍 `keygen` → 断言 `keys.env` 权限 600、`server.json` 里含 `mlkem768x25519plus`、链接带 `type=xhttp`/`security=reality`/`flow=xtls-rprx-vision`、且**不生成 client.json** → 再用镜像内的 xray 对服务端配置跑 `-test` |
 | `publish` | push 到 `main`/`master`、打 `v*` tag、手动 | 多架构（linux/amd64 + linux/arm64）构建，推到 ghcr.io 和 Docker Hub |
 
 ### 8.1 配置 secrets
@@ -336,7 +331,7 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 ## 9. 安全提醒
 
-* `data/keys.env`、`data/vless-link.txt`、`data/client.json` 含全部密钥，等同于节点所有权，别提交到 git、别发群里。
+* `data/keys.env`、`data/vless-link.txt` 含全部密钥，等同于节点所有权，别提交到 git、别发群里。
 * 默认单用户单节点；要多人用就每个用户一条 UUID，并给各自不同的 `shortId`/路径（改 `entrypoint.sh` 的 `clients` 数组）。
 * 服务端路由只放行出站、封 `geoip:cn`，不做 DNS 转发、不开 API，攻击面很小；但仍建议定期 `docker compose pull` 更新镜像。
 
@@ -349,9 +344,10 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 节点始终跑在容器里：
 
 * 拉镜像 / 起容器 / 更新 / 卸载
-* 展示节点链接 + 终端二维码（有 `qrencode` 时）+ PNG 二维码
-* 导出客户端 `client.json`
+* 部署完直接把 `vless://` 链接 + 二维码打印出来，之后随时可以再看
 * 轮换密钥、备份 `data`、看日志
+
+VPS 上只有**服务端**配置（`data/server.json`）；客户端不落地任何文件，用链接导入。
 
 ### 10.1 用起来
 
@@ -368,56 +364,40 @@ sudo bash manage.sh
 服务管理：
 4、查看状态   5、启动   6、停止   7、重启   8、查看日志
 节点管理：
-9、查看节点链接 + 二维码   10、导出客户端配置   11、轮换节点密钥
+9、查看节点链接 + 二维码   10、轮换节点密钥
 配置管理：
-12、编辑 .env   13、备份 data
+11、编辑 .env   12、备份 data
 0、退出
 ```
 
-不想进菜单也可以直接跑：
+也可以直接跑：
 
 ```bash
-sudo bash manage.sh install    # 首次：拉镜像 → 起容器 → 等待生成密钥 → 打印链接 + 二维码
-sudo bash manage.sh links      # 再看一次链接 + 二维码
-sudo bash manage.sh client     # 把 data/client.json 导出到当前目录
+sudo bash manage.sh install    # 首次：拉镜像 → 起容器 → 生成密钥 → 打印链接 + 二维码
+sudo bash manage.sh links      # 以后再查看链接 + 二维码
 sudo bash manage.sh update     # 拉新镜像并重启（密钥不变，客户端不掉线）
 sudo bash manage.sh rotate     # 轮换 UUID / x25519 / shortId / 路径 / 后量子密钥
 sudo bash manage.sh log        # docker compose logs --tail 100
 ```
 
-`docker compose up -d` 仍然是等价的底层操作，脚本只是替你搞清楚“跑哪条、去哪拿链接”。
+等价的底层操作仍然是 `docker compose up -d`，脚本只是替你记住“跑哪条、去哪拿链接”。
 
 ### 10.2 目录约定
 
 | 路径 | 说明 |
 |---|---|
-| `./.env` | 镜像 tag / 端口 / 伪装站点 / 节点名（脚本首次运行会生成默认值） |
+| `./.env` | 镜像 tag / 端口 / 伪装站点 / 节点名（首次运行会自动生成） |
 | `./data/server.json` | **服务端配置**（容器生成，VPS 上就是它在跑） |
-| `./data/client.json` | **客户端配置**（socks 10808 / http 10809 + 国内直连） |
-| `./data/vless-link.txt` | **节点链接**（`vless://...`） |
-| `./data/connection-info.txt` | 各字段明文，方便手动填客户端 |
+| `./data/vless-link.txt` | **节点链接**（`vless://...`，客户端就吃这个） |
+| `./data/connection-info.txt` | 各字段明文（地址/端口/uuid/sni/shortId/path 等） |
 | `./data/keys.env` | 全部密钥（0600），备份它就等于备份节点 |
 | `./data/qr-vless.png` | 二维码图片（装了 qrencode 才有） |
-| `./client.json` | 菜单 10 导出的客户端配置副本 |
 
-### 10.3 VPS 和客户端各用哪个文件
+### 10.3 节点信息在哪看
 
-* **VPS**：容器读 `data/server.json`，你不用管，`docker compose up -d` 起就完事。
-* **客户端**：`data/client.json`（或 `manage.sh client` 导出的 `client.json`）。
-
-客户端侧：
-
-```bash
-xray run -c client.json        # socks5 127.0.0.1:10808 / http 127.0.0.1:10809
-```
-
-Windows 系统代理填 `127.0.0.1:10809`；v2rayN 用户直接用 `vless://` 链接导入即可。
-
-把客户端配置拉到本地：
-
-```bash
-scp root@<VPS_IP>:/root/Xray-Docker/client.json ./client.json
-```
+* 部署完：脚本会直接把链接和二维码打出来；
+* 之后：`sudo bash manage.sh links`，或者 `cat data/vless-link.txt`；
+* 容器日志里也有：`docker compose logs xray | grep '^vless://'`。
 
 ### 10.4 常见问题
 

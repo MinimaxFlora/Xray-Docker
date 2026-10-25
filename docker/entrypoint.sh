@@ -7,8 +7,8 @@
 #  Behaviour
 #    * first start  : generate UUID / x25519 keypair / shortId / vlessenc pair
 #                     and persist them in $DATA_DIR/keys.env (0600)
-#    * every start   : re-render server.json, client.json, vless:// link and a
-#                     human readable summary from keys.env + env vars
+#    * every start   : re-render server.json, the vless:// link and a human
+#                     readable summary from keys.env + env vars
 #    * sub commands  : entrypoint.sh keygen [--force]   # keys only, no server
 #
 #  Env vars (all optional)
@@ -33,7 +33,6 @@ REGEN="${REGEN:-0}"
 
 KEYS_FILE="$DATA_DIR/keys.env"
 SERVER_JSON="$DATA_DIR/server.json"
-CLIENT_JSON="$DATA_DIR/client.json"
 LINK_FILE="$DATA_DIR/vless-link.txt"
 INFO_FILE="$DATA_DIR/connection-info.txt"
 
@@ -126,7 +125,7 @@ resolve_addr() {
         esac
     done
     ADDR="YOUR_SERVER_IP"
-    log "WARN: public address unknown, set SERVER_ADDR in .env (client.json/link use a placeholder)"
+    log "WARN: public address unknown, set SERVER_ADDR in .env (link will use a placeholder)"
 }
 
 render_server() {
@@ -210,111 +209,6 @@ render_server() {
 EOF
 }
 
-render_client() {
-    cat > "$CLIENT_JSON" <<EOF
-{
-  "log": {
-    "loglevel": "warning"
-  },
-  "inbounds": [
-    {
-      "tag": "socks-in",
-      "listen": "127.0.0.1",
-      "port": 10808,
-      "protocol": "socks",
-      "settings": {
-        "auth": "noauth",
-        "udp": true
-      },
-      "sniffing": {
-        "enabled": true,
-        "destOverride": [
-          "http",
-          "tls",
-          "quic"
-        ],
-        "routeOnly": true
-      }
-    },
-    {
-      "tag": "http-in",
-      "listen": "127.0.0.1",
-      "port": 10809,
-      "protocol": "http",
-      "sniffing": {
-        "enabled": true,
-        "destOverride": [
-          "http",
-          "tls",
-          "quic"
-        ],
-        "routeOnly": true
-      }
-    }
-  ],
-  "outbounds": [
-    {
-      "tag": "proxy",
-      "protocol": "vless",
-      "settings": {
-        "address": "$ADDR",
-        "port": $PUBLIC_PORT,
-        "id": "$UUID",
-        "flow": "xtls-rprx-vision",
-        "encryption": "$ENC"
-      },
-      "streamSettings": {
-        "network": "xhttp",
-        "xhttpSettings": {
-          "path": "$XPATH",
-          "mode": "auto"
-        },
-        "security": "reality",
-        "realitySettings": {
-          "serverName": "$SNI",
-          "fingerprint": "chrome",
-          "publicKey": "$PUB",
-          "shortId": "$SID",
-          "spiderX": "$SPX"
-        }
-      }
-    },
-    {
-      "protocol": "freedom",
-      "tag": "direct"
-    },
-    {
-      "protocol": "blackhole",
-      "tag": "block"
-    }
-  ],
-  "routing": {
-    "domainStrategy": "IPIfNonMatch",
-    "rules": [
-      {
-        "ip": [
-          "geoip:private"
-        ],
-        "outboundTag": "direct"
-      },
-      {
-        "ip": [
-          "geoip:cn"
-        ],
-        "outboundTag": "direct"
-      },
-      {
-        "domain": [
-          "geosite:cn"
-        ],
-        "outboundTag": "direct"
-      }
-    ]
-  }
-}
-EOF
-}
-
 write_link_and_info() {
     _path_enc=$(printf '%s' "$XPATH" | sed 's|/|%2F|g')
     _spx_enc=$(printf '%s' "$SPX" | sed 's|/|%2F|g')
@@ -343,9 +237,8 @@ flow       : xtls-rprx-vision
 spiderX    : $SPX
 encryption : $ENC
 
-Import options:
-  1) copy $LINK_FILE into the client (v2rayN: Ctrl+V / servers -> import from clipboard)
-  2) or import $CLIENT_JSON as a full Xray config
+How to use:
+  copy the link below, in v2rayN press Ctrl+V (import from clipboard)
 EOF
 }
 
@@ -355,10 +248,6 @@ validate() {
         log "server.json did not pass 'xray run -test':"
         sed 's/^/  /' "$DATA_DIR/.validate.err" >&2 || true
         die "invalid server config, refusing to start"
-    fi
-    if ! "$XRAY_BIN" run -test -c "$CLIENT_JSON" >"$DATA_DIR/.validate.err" 2>&1; then
-        log "client.json did not pass 'xray run -test' (server can still run):"
-        sed 's/^/  /' "$DATA_DIR/.validate.err" >&2 || true
     fi
     rm -f "$DATA_DIR/.validate.err"
 }
@@ -370,13 +259,11 @@ mkdir -p "$DATA_DIR"
 load_or_gen_secrets
 resolve_addr
 render_server
-render_client
 write_link_and_info
 validate
 
 log "node        : $NODE_NAME ($SNI -> $ADDR:$PUBLIC_PORT)"
 log "server conf : $SERVER_JSON"
-log "client conf : $CLIENT_JSON"
 log "share link  : $LINK_FILE"
 log "summary     : $INFO_FILE"
 printf '\n%s\n\n' "$LINK"

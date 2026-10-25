@@ -13,13 +13,11 @@
 #   全部节点密钥（UUID / x25519 / shortId / XHTTP 路径 / 后量子密钥）
 #   都由容器内的 entrypoint 自动生成，本脚本只负责：
 #     - 拉镜像、起容器、更新、卸载
-#     - 展示节点链接 + 二维码
-#     - 导出客户端配置 client.json
+#     - 展示节点链接 + 二维码（部署完直接弹出来，之后随时可看）
 #     - 轮换密钥、备份、看日志
 #
-#   服务端配置：data/server.json（容器生成，宿主机可直接看）
-#   客户端配置：data/client.json（下载到本地给客户端用）
-#   节点链接：  data/vless-link.txt
+#   本脚本只处理服务端：配置是 data/server.json
+#   客户端不用配置文件，把节点链接复制到 v2rayN（或扫码）即可
 #
 # Requirements:
 #   - Linux / macOS 上的 Docker Engine + Compose v2
@@ -50,7 +48,6 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
 ENV_FILE="$SCRIPT_DIR/.env"
 DATA_DIR="$SCRIPT_DIR/data"
-CLIENT_FILE="$DATA_DIR/client.json"
 LINK_FILE="$DATA_DIR/vless-link.txt"
 INFO_FILE="$DATA_DIR/connection-info.txt"
 
@@ -369,33 +366,10 @@ SHOW_NODES() {
     echo
     echo -e "${GREEN_COLOR}链接文件：${RES}$LINK_FILE"
     echo -e "${GREEN_COLOR}服务端配置：${RES}$DATA_DIR/server.json"
-    echo -e "${GREEN_COLOR}客户端配置：${RES}$CLIENT_FILE"
 
     SHOW_QR "$link" vless
 
     echo -e "\n${GREEN_COLOR}复制链接到 v2rayN：Ctrl+V 导入${RES}"
-}
-
-EXPORT_CLIENT() {
-    if [ ! -s "$CLIENT_FILE" ]; then
-        echo -e "${RED_COLOR}还没有 $CLIENT_FILE，请先启动节点${RES}"
-        return 1
-    fi
-    local target="$SCRIPT_DIR/client.json"
-    cp -f "$CLIENT_FILE" "$target"
-    chmod 600 "$target"
-    echo -e "${GREEN_COLOR}客户端配置已导出：$target${RES}"
-    echo -e "${YELLOW_COLOR}它包含节点密钥，别提交到 git、别外传${RES}"
-    echo
-    echo -e "${GREEN_COLOR}用法：${RES}"
-    echo -e "  xray run -c client.json     # socks5 127.0.0.1:10808 / http 127.0.0.1:10809"
-    echo -e "  系统代理填 127.0.0.1:10809"
-    echo
-    echo -e "${GREEN_COLOR}从 VPS 下载到本地：${RES}"
-    local addr
-    addr=$(env_get SERVER_ADDR "")
-    [ -z "$addr" ] && addr="<VPS_IP>"
-    echo -e "  scp root@$addr:$target ./client.json"
 }
 
 ROTATE_KEYS() {
@@ -475,7 +449,6 @@ SUCCESS() {
     echo -e "  服务器：  $addr:$port"
     echo -e "  伪装站点：$(env_get SNI "$DEFAULT_SNI")"
     echo -e "  服务端配置：data/server.json"
-    echo -e "  客户端配置：data/client.json"
     echo -e "  节点链接：  data/vless-link.txt"
     echo -e "${PURPLE_COLOR}==================================================${RES}"
 
@@ -483,7 +456,7 @@ SUCCESS() {
     echo -e "${CYAN_COLOR}$link${RES}"
     SHOW_QR "$link" vless
 
-    echo -e "\n${GREEN_COLOR}导出客户端配置：菜单 10，或 scp -r root@$addr:$DATA_DIR/client.json ./${RES}"
+    echo -e "\n${GREEN_COLOR}以后随时查看：sudo bash manage.sh links${RES}"
     echo -e "${YELLOW_COLOR}提示：连不上先看安全组/防火墙是否放行 $port/tcp${RES}"
     echo
 }
@@ -508,16 +481,15 @@ SHOW_MENU() {
         echo -e "${GREEN_COLOR}-------------------${RES}"
         echo -e "${GREEN_COLOR}节点管理：${RES}"
         echo -e "${GREEN_COLOR}9、查看节点链接 + 二维码${RES}"
-        echo -e "${GREEN_COLOR}10、导出客户端配置 client.json${RES}"
-        echo -e "${GREEN_COLOR}11、轮换节点密钥${RES}"
+        echo -e "${GREEN_COLOR}10、轮换节点密钥${RES}"
         echo -e "${GREEN_COLOR}-------------------${RES}"
         echo -e "${GREEN_COLOR}配置管理：${RES}"
-        echo -e "${GREEN_COLOR}12、编辑 .env${RES}"
-        echo -e "${GREEN_COLOR}13、备份 data${RES}"
+        echo -e "${GREEN_COLOR}11、编辑 .env${RES}"
+        echo -e "${GREEN_COLOR}12、备份 data${RES}"
         echo -e "${GREEN_COLOR}-------------------${RES}"
         echo -e "${GREEN_COLOR}0、退出脚本${RES}"
         echo
-        read -r -p "请输入选项 [0-13]: " choice
+        read -r -p "请输入选项 [0-12]: " choice
 
         case "$choice" in
             1) INSTALL ;;
@@ -529,10 +501,9 @@ SHOW_MENU() {
             7) CHECK_ENV && compose restart && echo -e "${GREEN_COLOR}已重启${RES}" ;;
             8) SHOW_LOG ;;
             9) SHOW_NODES ;;
-            10) EXPORT_CLIENT ;;
-            11) ROTATE_KEYS ;;
-            12) EDIT_ENV ;;
-            13) BACKUP ;;
+            10) ROTATE_KEYS ;;
+            11) EDIT_ENV ;;
+            12) BACKUP ;;
             0) exit 0 ;;
             *) echo -e "${RED_COLOR}无效选项${RES}" ;;
         esac
@@ -550,7 +521,6 @@ case "${1:-}" in
     update)    UPDATE ;;
     uninstall) UNINSTALL ;;
     links)     SHOW_NODES ;;
-    client)    EXPORT_CLIENT ;;
     rotate)    ROTATE_KEYS ;;
     status)    STATUS ;;
     start)     CHECK_ENV && compose up -d ;;
@@ -560,7 +530,7 @@ case "${1:-}" in
     backup)    BACKUP ;;
     ""|menu)   SHOW_MENU ;;
     *)
-        echo -e "${RED_COLOR}用法：${RES}$0 [install|update|uninstall|links|client|rotate|status|start|stop|restart|log|backup]"
+        echo -e "${RED_COLOR}用法：${RES}$0 [install|update|uninstall|links|rotate|status|start|stop|restart|log|backup]"
         exit 1
         ;;
 esac
