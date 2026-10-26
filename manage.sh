@@ -366,8 +366,14 @@ INSTALL() {
         return 1
     fi
 
-    echo -e "${GREEN_COLOR}启动容器 ...${RES}"
-    if ! compose up -d; then
+    # data 被删过但旧容器还在时，compose 不会重建 -> 密钥永远生成不出来
+    if [ ! -f "$DATA_DIR/keys.env" ]; then
+        echo -e "${YELLOW_COLOR}没有找到节点密钥，强制重建容器${RES}"
+        if ! compose up -d --force-recreate; then
+            echo -e "${RED_COLOR}容器启动失败，请查看日志${RES}"
+            return 1
+        fi
+    elif ! compose up -d; then
         echo -e "${RED_COLOR}容器启动失败，请查看日志${RES}"
         return 1
     fi
