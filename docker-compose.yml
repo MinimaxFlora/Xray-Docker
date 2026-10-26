@@ -6,6 +6,10 @@
 #  Default: pull the published multi-arch image (amd64/arm64).
 #  Local build instead:
 #     docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#
+#  Optional subscription (HTTPS, acme.sh cert):
+#     sudo bash manage.sh cert && sudo bash manage.sh sub
+#  it starts the "sub" service below (nginx + your cert + generated files).
 # ===========================================================================
 services:
   xray:
@@ -47,3 +51,27 @@ services:
     # comment out `ports:` above and uncomment the two lines below.
     # network_mode: host
     # ---------------------------------------------------------------------
+
+  # ---------------------------------------------------------------------
+  # HTTPS subscription (optional, started by: sudo bash manage.sh sub)
+  #   https://<host>:8443/<token>/base64.txt    v2rayN / 通用 base64 订阅
+  #   https://<host>:8443/<token>/mihomo.yaml   mihomo / Clash 订阅
+  # ---------------------------------------------------------------------
+  sub:
+    image: nginx:alpine
+    container_name: xray-sub
+    restart: unless-stopped
+    profiles: ["sub"]
+    depends_on:
+      - xray
+    ports:
+      - "${SUB_PORT:-8443}:8443/tcp"
+    volumes:
+      - ./data/sub/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./data/sub/www:/usr/share/nginx/html:ro
+      - ./data/certs:/etc/nginx/certs:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"

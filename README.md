@@ -94,14 +94,11 @@ sudo bash manage.sh
 第一次运行如果没装 Docker，会先问你要不要用官方脚本装（`NONINTERACTIVE=1` 时自动装）。
 
 ```
-基础功能：
-1、安装 / 启动节点      2、更新镜像      3、卸载
-服务管理：
-4、查看状态   5、启动   6、停止   7、重启   8、查看日志
-节点管理：
-9、查看节点链接 + 二维码   10、导出客户端配置 client.json   11、轮换节点密钥
-配置管理：
-12、编辑 .env   13、备份 data
+基础功能：   1、安装 / 启动节点    2、更新镜像    3、卸载
+服务管理：   4、状态  5、启动  6、停止  7、重启  8、日志
+节点管理：   9、链接 + 二维码      10、导出 client.json      11、轮换密钥
+配置管理：   12、编辑 .env         13、备份 data
+订阅（HTTPS）： 14、申请证书（域名 / IP，acme.sh）   15、生成订阅（base64 + mihomo）
 0、退出
 ```
 
@@ -113,6 +110,8 @@ sudo bash manage.sh links      # 再看链接 + 二维码
 sudo bash manage.sh client     # 导出 client.json 到当前目录
 sudo bash manage.sh update     # 拉新镜像并重启（密钥不变）
 sudo bash manage.sh rotate     # 轮换全部密钥（旧客户端失效）
+sudo bash manage.sh cert       # 申请证书（域名 / IP 证书，acme.sh）
+sudo bash manage.sh sub        # 生成 HTTPS 订阅（base64 + mihomo）
 sudo bash manage.sh log        # docker compose logs --tail 100
 ```
 
@@ -177,6 +176,8 @@ xray run -c client.json
     ├── server.json             # 服务端配置（容器自己管理，不用你碰）
     ├── client.json             # 客户端配置（socks/http + 国内直连）
     ├── vless-link.txt          # vless:// 链接
+    ├── certs/                  # acme.sh 证书（fullchain.pem / privkey.pem）
+    ├── sub/                    # HTTPS 订阅：nginx.conf + www/<token>/{base64.txt,mihomo.yaml}
     ├── connection-info.txt     # 字段明文（地址/端口/uuid/sni/shortId/path）
     └── qr-vless.png            # 二维码图片（装了 qrencode 才有）
 ```
@@ -214,6 +215,8 @@ xray run -c client.json
 | 升级镜像 | 改 `.env` 的 `IMAGE` → `sudo bash manage.sh update` |
 | 轮换密钥 | `sudo bash manage.sh rotate` |
 | 备份 | `sudo bash manage.sh backup`（生成 `xray-data-backup-*.tar.gz`） |
+| 申请证书 | `sudo bash manage.sh cert`（域名 / IP，acme.sh） |
+| 生成 HTTPS 订阅 | `sudo bash manage.sh sub`（base64 + mihomo） |
 | 卸载 | `sudo bash manage.sh uninstall` |
 
 ---
@@ -306,6 +309,55 @@ sudo NO_QR=1 bash manage.sh links
 </details>
 
 ---
+
+## 🔐 HTTPS 订阅（证书 + base64 / mihomo）
+
+节点链接本身很长（后量子密钥），手抄/发群都麻烦，所以可以把它做成 **HTTPS 订阅**：
+一份给 v2rayN（base64），一份给 mihomo/Clash（YAML），都用你自己的证书走 TLS。
+
+### 1. 申请证书（acme.sh，参考 3x-ui 的做法）
+
+```bash
+sudo bash manage.sh cert
+```
+
+会先问证书类型（和 3x-ui 一样，回车默认 IP 证书）：
+
+```
+1) 域名证书（HTTP-01，需要 80 端口可达）
+2) IP 证书（Let's Encrypt shortlived，约 6 天有效，自动续期）
+请选择 [1/2]（回车默认 2 即 IP 证书）:
+```
+
+* **域名证书**：`acme.sh --issue -d <域名> --standalone --httpport 80`，Let's Encrypt 正式证书；
+* **IP 证书**：`acme.sh --issue -d <IP> --certificate-profile shortlived`，Let's Encrypt 的 IP 证书，
+  **只有 ~6 天有效**，靠 acme.sh 的 cron 自动续期（续期时 80 端口要能通）；
+* 证书装到 `data/certs/fullchain.pem` + `data/certs/privkey.pem`（700 / 600），
+  `--reloadcmd` 会自动重启订阅容器；
+* 都走 **HTTP-01**，所以申请时 **80/tcp 必须可达且空闲**（有 nginx 先停掉）。
+
+### 2. 生成订阅
+
+```bash
+sudo bash manage.sh sub
+```
+
+会起一个 `nginx:alpine` 容器（compose 里的 `sub` 服务，profile `sub`），输出：
+
+```
+v2rayN / base64 订阅：
+  https://<域名或IP>:8443/<随机token>/base64.txt
+mihomo / Clash 订阅：
+  https://<域名或IP>:8443/<随机token>/mihomo.yaml
+```
+
+* `base64.txt` = `base64(vless://...)`，v2rayN 里「订阅 → 添加」直接粘这个 URL，或者把内容粘进剪贴板导入；
+* `mihomo.yaml` = 完整可用的 mihomo 配置（`proxies` / `proxy-groups` / `rules` 都有），
+  mihomo 的订阅直接填这个 URL 即可（mihomo 支持 VLESS Encryption，字段是 `encryption`）；
+* 文件也在本地：`data/sub/www/<token>/`；订阅路径是随机的，`data/sub/token` 可以改；
+* 记得放行 **8443/tcp**（`SUB_PORT` 可改）。
+
+> 续期：acme.sh 会自己加 cron，续期成功后 `--reloadcmd` 重启 `xray-sub` 容器，订阅 URL 不变。
 
 ## 🏗 镜像 & CI
 
