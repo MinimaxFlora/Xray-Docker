@@ -19,8 +19,13 @@
 ## ✨ 一键部署
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/Xray-Docker/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/Xray-Docker/main/install.sh -o /tmp/xray-install.sh
+sudo bash /tmp/xray-install.sh
 ```
+
+> 不要写成 `curl ... | sudo bash`：那样 `sudo` 的 stdin 是脚本管道，**终端输入到不了脚本**，
+> 一问端口就会卡住。脚本现在检测到这种用法会直接提示你换成上面两行。
+> 确实想管道跑就用下面的 `--auto`（全默认、不提问）。
 
 全自动版（默认 `443` + 伪装站点 `www.lovelive-anime.jp`，全程不问问题）：
 

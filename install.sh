@@ -4,7 +4,8 @@
 # Xray Docker 一键安装（bootstrap）
 #
 # 用法（不需要 git）:
-#   curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/Xray-Docker/main/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/Xray-Docker/main/install.sh -o /tmp/xray-install.sh
+#   sudo bash /tmp/xray-install.sh
 #
 # 全自动（默认 443 + www.lovelive-anime.jp，不问问题）:
 #   curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/Xray-Docker/main/install.sh | sudo bash -s -- --auto
@@ -45,7 +46,27 @@ for arg in "$@"; do
     esac
 done
 
-[ "$(id -u)" = "0" ] || die "请用 root 运行：curl ... | sudo bash"
+[ "$(id -u)" = "0" ] || die "请用 root 运行"
+
+# `curl ... | sudo bash` 会把脚本塞进 sudo 的 stdin，导致后面的交互读不到输入（会卡死）。
+# 这种用法只允许配 --auto；否则直接提示正确的命令。
+if [ ! -t 0 ] && [ "$AUTO" != "1" ]; then
+    cat >&2 <<'EOM'
+
+检测到通过管道执行（curl ... | bash）：这种模式下终端输入到不了脚本，交互会卡住。
+
+请改用下面任意一种：
+
+  1) 下载后执行（可以正常回答端口/域名/邮箱等问题）
+     curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/Xray-Docker/main/install.sh -o /tmp/xray-install.sh
+     sudo bash /tmp/xray-install.sh
+
+  2) 全自动，不提问（默认 443 + www.lovelive-anime.jp）
+     curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/Xray-Docker/main/install.sh | sudo bash -s -- --auto
+
+EOM
+    exit 1
+fi
 
 # ---------------------------------------------------------------- Docker
 install_docker() {

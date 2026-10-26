@@ -64,14 +64,12 @@ DEFAULT_NODE_NAME="Xray"
 # 非交互模式：1 时所有询问取默认值（自动化用）
 NONINTERACTIVE="${NONINTERACTIVE:-0}"
 
-# 被 `curl | bash` / `install.sh` 调用时 stdin 是管道，read 会立刻 EOF（表现为“不问就用默认值”）。
-# 脚本本身是从文件读的，这里可以安全地把 stdin 接到终端；接不上就退化成全默认，绝不会卡住。
-if [ ! -t 0 ]; then
-    if ( : </dev/tty ) 2>/dev/null; then
-        exec </dev/tty
-    else
-        NONINTERACTIVE=1
-    fi
+# 提示：`curl | sudo bash` 时 sudo 的 stdin 是脚本管道，终端输入根本到不了子进程，
+# 这时候读输入只会卡住。所以交互类操作前会检查 tty（见 require_tty）。
+if [ ! -t 0 ] && [ "$NONINTERACTIVE" != "1" ]; then
+    NO_TTY=1
+else
+    NO_TTY=0
 fi
 
 # =============================================================================
@@ -79,6 +77,19 @@ fi
 # =============================================================================
 print_line() {
     printf "%s\n" "$1"
+}
+
+require_tty() {
+    if [ "$NO_TTY" = "1" ]; then
+        echo -e "${RED_COLOR}当前不是交互终端，读不到你的输入。${RES}" >&2
+        echo -e "${YELLOW_COLOR}原因：用 \`curl ... | sudo bash\` 时 sudo 的 stdin 是脚本管道。${RES}" >&2
+        echo -e "${YELLOW_COLOR}请改用：${RES}" >&2
+        echo "  curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/Xray-Docker/main/install.sh -o /tmp/xray-install.sh" >&2
+        echo "  sudo bash /tmp/xray-install.sh" >&2
+        echo -e "${YELLOW_COLOR}或者全默认：${RES}  curl -fsSL .../install.sh | sudo bash -s -- --auto" >&2
+        return 1
+    fi
+    return 0
 }
 
 ASK_TIMEOUT="${ASK_TIMEOUT:-180}"
@@ -325,6 +336,7 @@ SHOW_QR() {
 # 主流程
 # =============================================================================
 INSTALL() {
+    require_tty || return 1
     CHECK_ENV
     WRITE_DEFAULT_ENV
 
@@ -392,6 +404,7 @@ UPDATE() {
 }
 
 UNINSTALL() {
+    require_tty || return 1
     CHECK_ENV
     echo -e "${YELLOW_COLOR}即将停止并删除容器${RES}"
     if [ -d "$DATA_DIR" ]; then
@@ -475,6 +488,7 @@ EXPORT_CLIENT() {
 }
 
 ROTATE_KEYS() {
+    require_tty || return 1
     CHECK_ENV
     if [ ! -f "$DATA_DIR/keys.env" ]; then
         echo -e "${RED_COLOR}还没有节点，请先安装${RES}"
@@ -606,6 +620,7 @@ get_public_ip() {
 }
 
 ISSUE_CERT() {
+    require_tty || return 1
     local mode="$1" host="$2" email="$3"
 
     if [ -z "$host" ] || [ "$host" = "YOUR_SERVER_IP" ]; then
