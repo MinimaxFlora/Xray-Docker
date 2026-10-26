@@ -36,36 +36,26 @@ warn() { printf "${YELLOW}[警告]${RES} %s\n" "$*"; }
 die()  { printf "${RED}[错误]${RES} %s\n" "$*" >&2; exit 1; }
 
 REPO="MinimaxFlora/Xray-Docker"
+SELF_URL="https://raw.githubusercontent.com/${REPO}/${XRAY_BRANCH:-main}/install.sh"
 BRANCH="${XRAY_BRANCH:-main}"
 TARGET="${XRAY_HOME:-/root/Xray-Docker}"
-AUTO=0
+# 一键用法就是 curl ... | sudo bash：全程自动、不提问。
+# 想手动回答问题请用仓库里的 manage.sh（或 --interactive）。
+AUTO=1
+INTERACTIVE=0
 
 for arg in "$@"; do
     case "$arg" in
         --auto|-y|--yes) AUTO=1 ;;
+        --interactive|-i) INTERACTIVE=1; AUTO=0 ;;
     esac
 done
 
-[ "$(id -u)" = "0" ] || die "请用 root 运行"
-
-# `curl ... | sudo bash` 会把脚本塞进 sudo 的 stdin，导致后面的交互读不到输入（会卡死）。
-# 这种用法只允许配 --auto；否则直接提示正确的命令。
-if [ ! -t 0 ] && [ "$AUTO" != "1" ]; then
-    cat >&2 <<'EOM'
-
-检测到通过管道执行（curl ... | bash）：这种模式下终端输入到不了脚本，交互会卡住。
-
-请改用下面任意一种：
-
-  1) 下载后执行（可以正常回答端口/域名/邮箱等问题）
-     curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/Xray-Docker/main/install.sh -o /tmp/xray-install.sh
-     sudo bash /tmp/xray-install.sh
-
-  2) 全自动，不提问（默认 443 + www.lovelive-anime.jp）
-     curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/Xray-Docker/main/install.sh | sudo bash -s -- --auto
-
-EOM
-    exit 1
+if [ "$(id -u)" != "0" ]; then
+    if command -v sudo >/dev/null 2>&1; then
+        die "请用 root 运行：curl -fsSL ${SELF_URL} | sudo bash"
+    fi
+    die "请用 root 运行"
 fi
 
 # ---------------------------------------------------------------- Docker
@@ -104,22 +94,7 @@ install_docker() {
 }
 
 if ! command -v docker >/dev/null 2>&1; then
-    if [ "$AUTO" = "1" ]; then
-        install_docker
-    else
-        # 管道安装时 stdin 不是终端，问也问不出来；直接按“是”处理，避免卡住
-        if [ ! -t 0 ]; then
-            warn "非交互执行，直接使用官方脚本安装 Docker"
-            install_docker
-        else
-            printf "${YELLOW}未检测到 Docker。${RES}是否用官方脚本自动安装？[Y/n]: "
-            read -r answer || answer=""
-            case "$answer" in
-                [nN]|[nN][oO]) die "已取消。请先安装 Docker：https://docs.docker.com/engine/install/" ;;
-                *) install_docker ;;
-            esac
-        fi
-    fi
+    install_docker
 else
     info "已安装 Docker：$(docker --version)"
 fi
@@ -165,8 +140,25 @@ ok "文件已就位：$TARGET（docker-compose.yml / manage.sh / .env）"
 # ---------------------------------------------------------------- 交给 manage.sh
 cd "$TARGET" || die "无法进入 $TARGET"
 
-if [ "$AUTO" = "1" ]; then
-    exec env NONINTERACTIVE=1 bash "$TARGET/manage.sh" install
-else
+if [ "$INTERACTIVE" = "1" ]; then
     exec bash "$TARGET/manage.sh" install
 fi
+
+# 全程自动：不提问，直接部署
+NONINTERACTIVE=1 bash "$TARGET/manage.sh" install
+
+# 部署完直接进菜单（有终端才有意义；读不到就提示一下，绝不卡住）
+enter_menu() {
+    if [ -r /dev/tty ]; then
+        printf "\n${GREEN}安装完成。按回车进入管理菜单（10 秒后自动跳过）：${RES}" >/dev/tty
+        if IFS= read -r -t 10 _ < /dev/tty; then
+            exec bash "$TARGET/manage.sh" < /dev/tty
+        fi
+        printf "\n" >/dev/tty
+    fi
+    echo
+    echo "安装完成。以后随时打开菜单："
+    echo "  cd $TARGET && sudo bash manage.sh"
+}
+
+enter_menu
