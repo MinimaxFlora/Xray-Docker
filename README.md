@@ -360,8 +360,10 @@ mihomo / Clash 订阅：
 ```
 
 * `base64.txt` = `base64(vless://...)`，v2rayN 里「订阅 → 添加」直接粘这个 URL，或者把内容粘进剪贴板导入；
-* `mihomo.yaml` = 完整可用的 mihomo 配置（`proxies` / `proxy-groups` / `rules` 都有），
-  mihomo 的订阅直接填这个 URL 即可（mihomo 支持 VLESS Encryption，字段是 `encryption`）；
+* `mihomo.yaml` = 参考 [HenryChiao/MIHOMO_YAMLS](https://github.com/HenryChiao/MIHOMO_YAMLS) 风格生成的完整配置：
+  `dns`（fake-ip + DoH + `+.cn` 分流）、`sniffer`、3 个策略组（默认代理 / 自动选择 / 全球直连）、
+  `rule-providers`（MetaCubeX 的 cn-domain / cn-ip / private，mrs 格式）+ 11 条规则；
+  mihomo 订阅直接填这个 URL 即可（mihomo 支持 VLESS Encryption，字段是 `encryption`）；
 * 文件也在本地：`data/sub/www/<token>/`；订阅路径是随机的，`data/sub/token` 可以改；
 * 记得放行 **8443/tcp**（`SUB_PORT` 可改）。
 

@@ -776,43 +776,161 @@ CERT() {
 MIHOMO_YAML() {
     local addr="$1" port="$2" uuid="$3" sni="$4" pub="$5" sid="$6" path="$7" enc="$8" name="$9"
     cat <<EOF
+# ==========================================================
+# mihomo (Clash.Meta) 配置 - 由 manage.sh 生成
+# 节点: ${name}  |  ${addr}:${port}
+# 参考模板风格: https://github.com/HenryChiao/MIHOMO_YAMLS
+# ==========================================================
+
 mixed-port: 7890
 allow-lan: false
+bind-address: '*'
 mode: rule
-log-level: info
+log-level: warning
+ipv6: true
+unified-delay: true
+tcp-concurrent: true
+find-process-mode: 'off'
 external-controller: 127.0.0.1:9090
 
+profile:
+  store-selected: true
+  store-fake-ip: true
+
+# ---------------------- 域名嗅探 ----------------------
+sniffer:
+  enable: true
+  force-dns-mapping: true
+  parse-pure-ip: true
+  override-destination: false
+  sniff:
+    HTTP:
+      ports: [80, 8080-8880]
+      override-destination: true
+    TLS:
+      ports: [443, 8443]
+    QUIC:
+      ports: [443, 8443]
+
+# ---------------------- DNS ----------------------
+dns:
+  enable: true
+  ipv6: false
+  listen: 0.0.0.0:1053
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  fake-ip-filter:
+    - '*.lan'
+    - '*.local'
+    - '*.localdomain'
+    - '+.msftconnecttest.com'
+    - '+.msftncsi.com'
+    - '+.srv.nintendo.net'
+    - '+.stun.playstation.net'
+    - 'xbox.*.microsoft.com'
+    - 'localhost.ptlogin2.qq.com'
+    - 'time.*.com'
+    - 'ntp.*.com'
+  default-nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+  nameserver:
+    - https://dns.alidns.com/dns-query
+    - https://doh.pub/dns-query
+  proxy-server-nameserver:
+    - https://dns.alidns.com/dns-query
+  nameserver-policy:
+    '+.cn':
+      - https://dns.alidns.com/dns-query
+      - https://doh.pub/dns-query
+
+# ---------------------- 节点 ----------------------
 proxies:
-  - name: "$name"
+  - name: "${name}"
     type: vless
-    server: "$addr"
-    port: $port
-    uuid: "$uuid"
+    server: "${addr}"
+    port: ${port}
+    uuid: "${uuid}"
     udp: true
     tls: true
     flow: xtls-rprx-vision
-    servername: "$sni"
+    servername: "${sni}"
     client-fingerprint: chrome
     network: xhttp
     reality-opts:
-      public-key: "$pub"
-      short-id: "$sid"
+      public-key: "${pub}"
+      short-id: "${sid}"
     xhttp-opts:
-      path: "$path"
+      path: "${path}"
       mode: auto
-    encryption: "$enc"
+    encryption: "${enc}"
 
+# ---------------------- 策略组 ----------------------
 proxy-groups:
-  - name: Proxy
+  - name: "默认代理"
     type: select
     proxies:
-      - "$name"
+      - "自动选择"
+      - "${name}"
       - DIRECT
 
+  - name: "自动选择"
+    type: url-test
+    url: https://www.gstatic.com/generate_204
+    interval: 300
+    tolerance: 50
+    lazy: true
+    proxies:
+      - "${name}"
+
+  - name: "全球直连"
+    type: select
+    proxies:
+      - DIRECT
+      - "默认代理"
+
+# ---------------------- 规则集 ----------------------
+rule-providers:
+  cn-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/cn.mrs"
+    path: ./ruleset/cn-domain.mrs
+    interval: 86400
+    proxy: DIRECT
+
+  cn-ip:
+    type: http
+    behavior: ipcidr
+    format: mrs
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/cn.mrs"
+    path: ./ruleset/cn-ip.mrs
+    interval: 86400
+    proxy: DIRECT
+
+  private:
+    type: http
+    behavior: domain
+    format: mrs
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/private.mrs"
+    path: ./ruleset/private.mrs
+    interval: 86400
+    proxy: DIRECT
+
+# ---------------------- 规则 ----------------------
 rules:
-  - GEOIP,PRIVATE,DIRECT
+  - RULE-SET,private,DIRECT
+  - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
+  - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
+  - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
+  - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
+  - IP-CIDR,100.64.0.0/10,DIRECT,no-resolve
+  - IP-CIDR6,fc00::/7,DIRECT,no-resolve
+  - RULE-SET,cn-domain,DIRECT
+  - RULE-SET,cn-ip,DIRECT,no-resolve
   - GEOIP,CN,DIRECT
-  - MATCH,Proxy
+  - MATCH,默认代理
 EOF
 }
 
