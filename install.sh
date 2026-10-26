@@ -86,16 +86,18 @@ if ! command -v docker >/dev/null 2>&1; then
     if [ "$AUTO" = "1" ]; then
         install_docker
     else
-        printf "${YELLOW}未检测到 Docker。${RES}是否用官方脚本自动安装？[Y/n]: "
-        if [ -r /dev/tty ]; then
-            IFS= read -r answer < /dev/tty || answer=""
+        # 管道安装时 stdin 不是终端，问也问不出来；直接按“是”处理，避免卡住
+        if [ ! -t 0 ]; then
+            warn "非交互执行，直接使用官方脚本安装 Docker"
+            install_docker
         else
+            printf "${YELLOW}未检测到 Docker。${RES}是否用官方脚本自动安装？[Y/n]: "
             read -r answer || answer=""
+            case "$answer" in
+                [nN]|[nN][oO]) die "已取消。请先安装 Docker：https://docs.docker.com/engine/install/" ;;
+                *) install_docker ;;
+            esac
         fi
-        case "$answer" in
-            [nN]|[nN][oO]) die "已取消。请先安装 Docker：https://docs.docker.com/engine/install/" ;;
-            *) install_docker ;;
-        esac
     fi
 else
     info "已安装 Docker：$(docker --version)"

@@ -64,6 +64,16 @@ DEFAULT_NODE_NAME="Xray"
 # 非交互模式：1 时所有询问取默认值（自动化用）
 NONINTERACTIVE="${NONINTERACTIVE:-0}"
 
+# 被 `curl | bash` / `install.sh` 调用时 stdin 是管道，read 会立刻 EOF（表现为“不问就用默认值”）。
+# 脚本本身是从文件读的，这里可以安全地把 stdin 接到终端；接不上就退化成全默认，绝不会卡住。
+if [ ! -t 0 ]; then
+    if ( : </dev/tty ) 2>/dev/null; then
+        exec </dev/tty
+    else
+        NONINTERACTIVE=1
+    fi
+fi
+
 # =============================================================================
 # 工具函数
 # =============================================================================
@@ -71,43 +81,37 @@ print_line() {
     printf "%s\n" "$1"
 }
 
-# curl | bash 时 stdin 不是终端，提示会读不到东西；统一从 /dev/tty 读
+ASK_TIMEOUT="${ASK_TIMEOUT:-180}"
+
 ask_value() {
     local prompt="$1" default="$2" value=""
-    if [ "$NONINTERACTIVE" = "1" ]; then
+    if [ "$NONINTERACTIVE" = "1" ] || [ ! -t 0 ]; then
         echo "$default"
         return 0
     fi
-    if [ -r /dev/tty ]; then
-        printf '%s [%s]: ' "$prompt" "$default" > /dev/tty
-        IFS= read -r value < /dev/tty || value=""
-    else
-        read -r -p "$prompt [$default]: " value || value=""
+    printf '%s [%s]: ' "$prompt" "$default" >&2
+    if ! IFS= read -r -t "$ASK_TIMEOUT" value; then
+        printf '\n%s\n' "（${ASK_TIMEOUT}s 没输入，用默认值 $default）" >&2
+        value="$default"
     fi
     [ -z "$value" ] && value="$default"
-    echo "$value"
+    printf '%s' "$value"
 }
 
 ask_yes() {
     local prompt="$1" answer=""
-    [ "$NONINTERACTIVE" = "1" ] && return 0
-    if [ -r /dev/tty ]; then
-        printf '%s [y/N]: ' "$prompt" > /dev/tty
-        IFS= read -r answer < /dev/tty || answer=""
-    else
-        read -r -p "$prompt [y/N]: " answer || answer=""
+    if [ "$NONINTERACTIVE" = "1" ] || [ ! -t 0 ]; then
+        return 0
+    fi
+    printf '%s [y/N]: ' "$prompt" >&2
+    if ! IFS= read -r -t "$ASK_TIMEOUT" answer; then
+        printf '\n%s\n' "（${ASK_TIMEOUT}s 没输入，按 N 处理）" >&2
+        return 1
     fi
     case "$answer" in
         [yY]|[yY][eE][sS]) return 0 ;;
         *) return 1 ;;
     esac
-}
-
-check_root() {
-    if [ "$(id -u)" != "0" ]; then
-        echo -e "${RED_COLOR}需要 root 权限：sudo bash manage.sh <命令>${RES}"
-        exit 1
-    fi
 }
 
 install_pkg() {
