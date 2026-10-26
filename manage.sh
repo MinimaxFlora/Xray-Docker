@@ -546,6 +546,40 @@ EDIT_ENV() {
     echo -e "${GREEN_COLOR}改完执行“重启”或 docker compose up -d 生效${RES}"
 }
 
+INSTALL_CLI() {
+    local wrapper="/usr/local/bin/xray"
+    local target="$SCRIPT_DIR/manage.sh"
+
+    if [ ! -f "$target" ]; then
+        echo -e "${RED_COLOR}找不到 $target${RES}"
+        return 1
+    fi
+
+    # 已有真正的 xray 二进制就不覆盖
+    if [ -e "$wrapper" ] && ! grep -q "manage.sh" "$wrapper" 2>/dev/null; then
+        echo -e "${YELLOW_COLOR}$wrapper 已存在且不是本脚本的快捷方式，跳过${RES}"
+        echo -e "${YELLOW_COLOR}可以手动加：alias xray='bash $target'${RES}"
+        return 1
+    fi
+
+    cat > "$wrapper" <<EOF
+#!/bin/bash
+# Xray 节点管理菜单（由 manage.sh 生成）
+exec bash "$target" "\$@"
+EOF
+    chmod +x "$wrapper"
+
+    # 顺手给个首字母大写的别名
+    if [ ! -e /usr/local/bin/Xray ]; then
+        ln -sf "$wrapper" /usr/local/bin/Xray 2>/dev/null || true
+    fi
+
+    echo -e "${GREEN_COLOR}快捷命令已安装：${RES}"
+    echo -e "  输入 ${CYAN_COLOR}xray${RES} 或 ${CYAN_COLOR}Xray${RES} 打开管理菜单"
+    echo -e "  也支持 ${CYAN_COLOR}xray links${RES} / ${CYAN_COLOR}xray client${RES} / ${CYAN_COLOR}xray cert${RES} ..."
+    return 0
+}
+
 SHOW_LOG() {
     CHECK_ENV
     compose logs --tail 100
@@ -907,9 +941,11 @@ SHOW_MENU() {
         echo -e "${GREEN_COLOR}14、申请证书（域名 / IP，acme.sh）${RES}"
         echo -e "${GREEN_COLOR}15、生成订阅（base64 + mihomo）${RES}"
         echo -e "${GREEN_COLOR}-------------------${RES}"
+        echo -e "${GREEN_COLOR}16、安装快捷命令（输入 xray 打开菜单）${RES}"
+        echo -e "${GREEN_COLOR}-------------------${RES}"
         echo -e "${GREEN_COLOR}0、退出脚本${RES}"
         echo
-        read -r -p "请输入选项 [0-15]: " choice
+        read -r -p "请输入选项 [0-16]: " choice
 
         case "$choice" in
             1) INSTALL ;;
@@ -927,6 +963,7 @@ SHOW_MENU() {
             13) BACKUP ;;
             14) CERT ;;
             15) SUB ;;
+            16) INSTALL_CLI ;;
             0) exit 0 ;;
             *) echo -e "${RED_COLOR}无效选项${RES}" ;;
         esac
@@ -948,6 +985,7 @@ case "${1:-}" in
     rotate)    ROTATE_KEYS ;;
     cert)      CERT ;;
     sub)       SUB ;;
+    cli)       INSTALL_CLI ;;
     status)    STATUS ;;
     start)     CHECK_ENV && compose up -d ;;
     stop)      CHECK_ENV && compose stop ;;
@@ -956,7 +994,7 @@ case "${1:-}" in
     backup)    BACKUP ;;
     ""|menu)   SHOW_MENU ;;
     *)
-        echo -e "${RED_COLOR}用法：${RES}$0 [install|update|uninstall|links|client|rotate|cert|sub|status|start|stop|restart|log|backup]"
+        echo -e "${RED_COLOR}用法：${RES}$0 [install|update|uninstall|links|client|rotate|cert|sub|cli|status|start|stop|restart|log|backup]"
         exit 1
         ;;
 esac

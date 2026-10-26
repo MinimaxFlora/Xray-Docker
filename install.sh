@@ -147,6 +147,9 @@ fi
 # 全程自动：不提问，直接部署
 NONINTERACTIVE=1 bash "$TARGET/manage.sh" install
 
+# 装个快捷命令：以后任意目录输入 xray 就能打开菜单
+bash "$TARGET/manage.sh" cli >/dev/null 2>&1 || warn "快捷命令安装失败（可手动：bash $TARGET/manage.sh cli）"
+
 # 部署完直接进菜单（有终端才有意义；读不到就提示一下，绝不卡住）
 enter_menu() {
     if [ -r /dev/tty ]; then
