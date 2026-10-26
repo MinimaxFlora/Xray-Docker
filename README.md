@@ -19,62 +19,34 @@
 ## ✨ 一键部署
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/Xray-Docker/main/install.sh -o /tmp/xray-install.sh
-sudo bash /tmp/xray-install.sh
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/Xray-Docker/main/install.sh | sudo bash
 ```
 
-> 不要写成 `curl ... | sudo bash`：那样 `sudo` 的 stdin 是脚本管道，**终端输入到不了脚本**，
-> 一问端口就会卡住。脚本现在检测到这种用法会直接提示你换成上面两行。
-> 确实想管道跑就用下面的 `--auto`（全默认、不提问）。
+**全程自动，不需要回答任何问题**：没 Docker 装 Docker → 拉镜像 → 起容器 → 生成密钥 → 打印链接/二维码 →
+**自动进入管理菜单**（按回车，之后就能在菜单里看链接、二维码、导出配置、申请证书、生成订阅）。
 
-全自动版（默认 `443` + 伪装站点 `www.lovelive-anime.jp`，全程不问问题）：
+> root 用户可以直接 `curl ... | bash`（菜单输入会更顺）；
+> 用 `sudo` 的话菜单提示只等 10 秒，超时会打印 `cd /root/Xray-Docker && sudo bash manage.sh` 让你自己进。
+
+装完之后任何时候想再看：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/Xray-Docker/main/install.sh | sudo bash -s -- --auto
+cd /root/Xray-Docker && sudo bash manage.sh
 ```
 
-这条命令会：
-
-1. **没有 Docker 就用官方脚本装**（`https://get.docker.com`，已装则跳过）
-2. 用 curl **只下载 3 个文件**到 `/root/Xray-Docker`：`docker-compose.yml` + `manage.sh` + `.env`（不需要 git，也不下整包；已有 `.env` 不会覆盖）
-3. 调 `manage.sh install`：拉镜像 → 起容器 → 直接打印 **链接 + 二维码 + 客户端配置**
-
-十几秒后终端弹出：
+菜单里能看/能做：
 
 ```
-==================================================
-  Xray 节点部署成功！
-==================================================
-  协议组合：VLESS + XHTTP + REALITY + Vision
-            + VLESS Encryption (ML-KEM-768)
-  服务器：  1.2.3.4:443
-  伪装站点：www.lovelive-anime.jp
-  客户端配置：data/client.json
-  节点链接：  data/vless-link.txt
-==================================================
-
-节点链接（复制到 v2rayN：Ctrl+V 导入）
-vless://xxxx@1.2.3.4:443?encryption=mlkem768x25519plus...&type=xhttp&...#Xray
-
-▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄   ← 二维码（PNG 也会存一份）
-█ ▄▄▄▄▄ █▀▄█▀▄ █ ▄▄▄▄▄ █
-...
+基础功能：   1、安装 / 启动节点    2、更新镜像    3、卸载
+服务管理：   4、状态  5、启动  6、停止  7、重启  8、日志
+节点管理：   9、链接 + 二维码      10、导出 client.json      11、轮换密钥
+配置管理：   12、编辑 .env         13、备份 data
+订阅（HTTPS）： 14、申请证书（域名 / IP，acme.sh）   15、生成订阅（base64 + mihomo）
+0、退出
 ```
 
-交互式部署会依次问你（`curl | bash` 也能正常回答，脚本从 `/dev/tty` 读）：
-
-1. 对外端口（默认 443）
-2. 伪装站点（默认 `www.lovelive-anime.jp`）
-3. 节点名
-4. **域名（可选：填了就顺带申请证书 + 生成 HTTPS 订阅；直接回车跳过）**
-5. 证书联系邮箱（第 4 步填了域名才问）
-
-想完全不提问就用上面的 `--auto`。
-
-> **前置要求**：Linux VPS，`443/tcp` 空闲。Docker 没装也行，脚本会用官方脚本装。
+> **前置要求**：Linux VPS，`443/tcp` 空闲；Docker 没有会自动装。
 > 云安全组和系统防火墙记得放行 443（要订阅再放行 8443，要申请证书还要 80）。
-
-不想装到 `/root`：`XRAY_HOME=/opt/xray curl ... | sudo bash`。
 
 ---
 

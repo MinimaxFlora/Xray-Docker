@@ -903,7 +903,6 @@ SHOW_MENU() {
         echo -e "${GREEN_COLOR}12、编辑 .env${RES}"
         echo -e "${GREEN_COLOR}13、备份 data${RES}"
         echo -e "${GREEN_COLOR}-------------------${RES}"
-        echo -e "${GREEN_COLOR}-------------------${RES}"
         echo -e "${GREEN_COLOR}订阅（HTTPS）：${RES}"
         echo -e "${GREEN_COLOR}14、申请证书（域名 / IP，acme.sh）${RES}"
         echo -e "${GREEN_COLOR}15、生成订阅（base64 + mihomo）${RES}"
