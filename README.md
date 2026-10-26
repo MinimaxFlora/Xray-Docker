@@ -334,7 +334,11 @@ sudo bash manage.sh cert
   **只有 ~6 天有效**，靠 acme.sh 的 cron 自动续期（续期时 80 端口要能通）；
 * 证书装到 `data/certs/fullchain.pem` + `data/certs/privkey.pem`（700 / 600），
   `--reloadcmd` 会自动重启订阅容器；
-* 都走 **HTTP-01**，所以申请时 **80/tcp 必须可达且空闲**（有 nginx 先停掉）。
+* 都走 **HTTP-01**，所以申请时 **80/tcp 必须可达且空闲**（有 nginx 先停掉）；
+* **邮箱**：默认留空（不填联系方式）。别用 `example.com` / `test.com` 这类保留域名，
+  Let's Encrypt 会直接以 `invalidContact` 拒绝；非交互可以
+  `ACME_EMAIL=you@qq.com sudo bash manage.sh cert`；
+* 之前失败过也没关系：脚本会清掉 `~/.acme.sh/account.conf` 里写坏的 `ACCOUNT_EMAIL` 再重试。
 
 ### 2. 生成订阅
 

@@ -93,6 +93,13 @@ ask_yes() {
     esac
 }
 
+check_root() {
+    if [ "$(id -u)" != "0" ]; then
+        echo -e "${RED_COLOR}需要 root 权限：sudo bash manage.sh <命令>${RES}"
+        exit 1
+    fi
+}
+
 install_pkg() {
     if command -v apt-get >/dev/null 2>&1; then
         DEBIAN_FRONTEND=noninteractive apt-get install -y "$@" >/dev/null 2>&1
@@ -551,7 +558,7 @@ ensure_acme() {
         return 0
     fi
     echo -e "${BLUE_COLOR}安装 acme.sh ...${RES}"
-    if ! curl -fsSL https://get.acme.sh | sh -s email=admin@example.com >/dev/null 2>&1; then
+    if ! curl -fsSL https://get.acme.sh | sh >/dev/null 2>&1; then
         echo -e "${RED_COLOR}acme.sh 安装失败${RES}"
         return 1
     fi
@@ -598,6 +605,42 @@ CERT() {
 
     ensure_acme || return 1
 
+    # Let's Encrypt 要一个可用邮箱；example.com 会被拒（invalidContact）
+    local email
+    email=$(env_get ACME_EMAIL "")
+    if [ -z "$email" ] && [ "$NONINTERACTIVE" != "1" ]; then
+        echo -e "${YELLOW_COLOR}Let's Encrypt 需要一个联系邮箱（可留空，留空则不填联系方式）${RES}"
+        read -r -p "邮箱: " email
+    fi
+    if [ -n "$email" ]; then
+        case "$email" in
+            *@example.com|*@example.org|*@test.com)
+                echo -e "${RED_COLOR}$email 是保留域名，Let's Encrypt 会拒绝，请换真实邮箱${RES}"
+                return 1 ;;
+            *@*.*) : ;;
+            *) echo -e "${RED_COLOR}邮箱格式不对：$email${RES}"; return 1 ;;
+        esac
+        env_set ACME_EMAIL "$email"
+    fi
+
+    # 之前用占位邮箱注册失败过，这里把 account.conf 里的坏邮箱清掉/换成新的
+    local acc_conf="$HOME/.acme.sh/account.conf"
+    if [ -f "$acc_conf" ]; then
+        if [ -n "$email" ]; then
+            sed -i.bak "s|^ACCOUNT_EMAIL=.*|ACCOUNT_EMAIL='$email'|" "$acc_conf" 2>/dev/null || true
+        else
+            sed -i.bak "/^ACCOUNT_EMAIL=/d" "$acc_conf" 2>/dev/null || true
+        fi
+        rm -f "${acc_conf}.bak" 2>/dev/null || true
+    fi
+
+    if [ -n "$email" ]; then
+        "$ACME" --register-account -m "$email" --server letsencrypt --force >/dev/null 2>&1 || true
+        "$ACME" --update-account -m "$email" --server letsencrypt >/dev/null 2>&1 || true
+    else
+        "$ACME" --register-account --server letsencrypt --force >/dev/null 2>&1 || true
+    fi
+
     echo -e "\n${YELLOW_COLOR}注意：HTTP-01 必须能通过 80 端口访问到本机，且 80 端口空闲。${RES}"
     mkdir -p "$CERT_DIR"
 
@@ -612,8 +655,12 @@ CERT() {
     echo -e "${BLUE_COLOR}签发中：$host ...${RES}"
     if ! "$ACME" "${issue_args[@]}"; then
         echo -e "${RED_COLOR}签发失败${RES}"
-        echo -e "${YELLOW_COLOR}排查：80 端口是否放行/被占用（systemctl stop nginx apache2）、域名是否解析到本机、${RES}"
-        echo -e "${YELLOW_COLOR}Let's Encrypt 对同一 IP/域名的频率限制。${RES}"
+        echo -e "${YELLOW_COLOR}排查：${RES}"
+        echo -e "  - 80 端口是否放行/被占用（systemctl stop nginx apache2）"
+        echo -e "  - 域名 $host 是否解析到本机公网 IP（dig +short $host）"
+        echo -e "  - 邮箱是否被拒（example.com 等保留域名不行，可 ACME_EMAIL=you@qq.com 重试）"
+        echo -e "  - Let's Encrypt 对同一 IP/域名的频率限制"
+        echo -e "${YELLOW_COLOR}详细日志：$HOME/.acme.sh/acme.sh.log${RES}"
         return 1
     fi
 
