@@ -71,22 +71,32 @@ print_line() {
     printf "%s\n" "$1"
 }
 
+# curl | bash 时 stdin 不是终端，提示会读不到东西；统一从 /dev/tty 读
 ask_value() {
-    local prompt="$1" default="$2" value
+    local prompt="$1" default="$2" value=""
     if [ "$NONINTERACTIVE" = "1" ]; then
         echo "$default"
         return 0
     fi
-    read -r -p "$prompt [$default]: " value
+    if [ -r /dev/tty ]; then
+        printf '%s [%s]: ' "$prompt" "$default" > /dev/tty
+        IFS= read -r value < /dev/tty || value=""
+    else
+        read -r -p "$prompt [$default]: " value || value=""
+    fi
     [ -z "$value" ] && value="$default"
     echo "$value"
 }
 
 ask_yes() {
-    local prompt="$1"
+    local prompt="$1" answer=""
     [ "$NONINTERACTIVE" = "1" ] && return 0
-    local answer
-    read -r -p "$prompt [y/N]: " answer
+    if [ -r /dev/tty ]; then
+        printf '%s [y/N]: ' "$prompt" > /dev/tty
+        IFS= read -r answer < /dev/tty || answer=""
+    else
+        read -r -p "$prompt [y/N]: " answer || answer=""
+    fi
     case "$answer" in
         [yY]|[yY][eE][sS]) return 0 ;;
         *) return 1 ;;
@@ -351,6 +361,19 @@ INSTALL() {
     else
         echo -e "${YELLOW_COLOR}容器已启动，但还没拿到链接，试试“查看日志”${RES}"
     fi
+    # 可选：域名 → 证书 → HTTPS 订阅
+    local domain email
+    domain=$(ask_value "域名（可选：填了就申请证书并生成 HTTPS 订阅；直接回车跳过）" "$(env_get CERT_HOST "")")
+    if [ -n "$domain" ]; then
+        email=$(ask_value "Let's Encrypt 联系邮箱（可留空）" "$(env_get ACME_EMAIL "")")
+        if ISSUE_CERT 1 "$domain" "$email"; then
+            SUB
+        else
+            echo -e "${YELLOW_COLOR}证书没申请成功，订阅先跳过；修好后执行：sudo bash manage.sh sub${RES}"
+        fi
+    else
+        echo -e "${YELLOW_COLOR}跳过证书/订阅。以后要加：sudo bash manage.sh cert && sudo bash manage.sh sub${RES}"
+    fi
 }
 
 UPDATE() {
@@ -578,39 +601,20 @@ get_public_ip() {
     printf '%s' "$ip"
 }
 
-CERT() {
-    check_root
-    local mode host
-    echo -e "\n${PURPLE_COLOR}==== 申请证书（Let's Encrypt / acme.sh）====${RES}"
-    echo -e "${GREEN_COLOR}1) 域名证书（HTTP-01，需要 80 端口可达）${RES}"
-    echo -e "${GREEN_COLOR}2) IP 证书（Let's Encrypt shortlived，约 6 天有效，自动续期）${RES}"
-    if [ "$NONINTERACTIVE" = "1" ]; then
-        mode="2"
-    else
-        read -r -p "请选择 [1/2]（回车默认 2 即 IP 证书）: " mode
-        [ -z "$mode" ] && mode="2"
-    fi
-
-    case "$mode" in
-        1)  host=$(ask_value "请输入域名（已解析到本机）" "") ;;
-        2)  host=$(ask_value "请输入 IP（回车用本机公网 IP）" "$(get_public_ip)") ;;
-        3)  echo -e "${RED_COLOR}无效选项${RES}"; return 1 ;;
-        *)  echo -e "${RED_COLOR}无效选项${RES}"; return 1 ;;
-    esac
+ISSUE_CERT() {
+    local mode="$1" host="$2" email="$3"
 
     if [ -z "$host" ] || [ "$host" = "YOUR_SERVER_IP" ]; then
-        echo -e "${RED_COLOR}地址无效，退出${RES}"
+        echo -e "${RED_COLOR}地址无效：$host${RES}"
         return 1
     fi
 
     ensure_acme || return 1
 
     # Let's Encrypt 要一个可用邮箱；example.com 会被拒（invalidContact）
-    local email
-    email=$(env_get ACME_EMAIL "")
     if [ -z "$email" ] && [ "$NONINTERACTIVE" != "1" ]; then
-        echo -e "${YELLOW_COLOR}Let's Encrypt 需要一个联系邮箱（可留空，留空则不填联系方式）${RES}"
-        read -r -p "邮箱: " email
+        echo -e "${YELLOW_COLOR}Let's Encrypt 需要联系邮箱（可留空；被拒过就换个真实的）${RES}"
+        email=$(ask_value "邮箱" "$(env_get ACME_EMAIL "")")
     fi
     if [ -n "$email" ]; then
         case "$email" in
@@ -623,7 +627,7 @@ CERT() {
         env_set ACME_EMAIL "$email"
     fi
 
-    # 之前用占位邮箱注册失败过，这里把 account.conf 里的坏邮箱清掉/换成新的
+    # 之前用占位邮箱注册失败过：清掉/替换 account.conf 里的 ACCOUNT_EMAIL
     local acc_conf="$HOME/.acme.sh/account.conf"
     if [ -f "$acc_conf" ]; then
         if [ -n "$email" ]; then
@@ -656,10 +660,10 @@ CERT() {
     if ! "$ACME" "${issue_args[@]}"; then
         echo -e "${RED_COLOR}签发失败${RES}"
         echo -e "${YELLOW_COLOR}排查：${RES}"
-        echo -e "  - 80 端口是否放行/被占用（systemctl stop nginx apache2）"
+        echo -e "  - 80 端口是否放行 / 被占用（systemctl stop nginx apache2）"
         echo -e "  - 域名 $host 是否解析到本机公网 IP（dig +short $host）"
-        echo -e "  - 邮箱是否被拒（example.com 等保留域名不行，可 ACME_EMAIL=you@qq.com 重试）"
-        echo -e "  - Let's Encrypt 对同一 IP/域名的频率限制"
+        echo -e "  - 邮箱被拒（example.com / test.com 不行，用 ACME_EMAIL=you@qq.com 重试）"
+        echo -e "  - Let's Encrypt 对同一 IP / 域名的频率限制"
         echo -e "${YELLOW_COLOR}详细日志：$HOME/.acme.sh/acme.sh.log${RES}"
         return 1
     fi
@@ -683,13 +687,31 @@ CERT() {
     echo -e "  证书：$CERT_DIR/fullchain.pem"
     echo -e "  私钥：$CERT_DIR/privkey.pem"
 
-    # 已经有订阅就直接重启容器挂上新证书
     if [ -f "$SUB_DIR/nginx.conf" ]; then
         compose --profile sub up -d sub >/dev/null 2>&1 || true
         echo -e "${GREEN_COLOR}已重启订阅容器${RES}"
-    else
-        echo -e "${YELLOW_COLOR}下一步：sudo bash manage.sh sub 生成订阅${RES}"
     fi
+    return 0
+}
+
+CERT() {
+    check_root
+    local mode host email
+    echo -e "\n${PURPLE_COLOR}==== 申请证书（Let's Encrypt / acme.sh）====${RES}"
+    echo -e "${GREEN_COLOR}1) 域名证书（HTTP-01，需要 80 端口可达）${RES}"
+    echo -e "${GREEN_COLOR}2) IP 证书（Let's Encrypt shortlived，约 6 天有效，自动续期）${RES}"
+    mode=$(ask_value "请选择 1=域名 2=IP" "2")
+
+    case "$mode" in
+        1) host=$(ask_value "域名（已解析到本机）" "$(env_get CERT_HOST "")") ;;
+        2) host=$(ask_value "IP（回车用本机公网 IP）" "$(get_public_ip)") ;;
+        *) echo -e "${RED_COLOR}无效选项${RES}"; return 1 ;;
+    esac
+
+    email=$(env_get ACME_EMAIL "")
+    ISSUE_CERT "$mode" "$host" "$email" || return 1
+
+    echo -e "${YELLOW_COLOR}下一步：sudo bash manage.sh sub 生成订阅${RES}"
 }
 
 MIHOMO_YAML() {

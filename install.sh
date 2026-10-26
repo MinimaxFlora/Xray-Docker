@@ -87,7 +87,11 @@ if ! command -v docker >/dev/null 2>&1; then
         install_docker
     else
         printf "${YELLOW}未检测到 Docker。${RES}是否用官方脚本自动安装？[Y/n]: "
-        read -r answer
+        if [ -r /dev/tty ]; then
+            IFS= read -r answer < /dev/tty || answer=""
+        else
+            read -r answer || answer=""
+        fi
         case "$answer" in
             [nN]|[nN][oO]) die "已取消。请先安装 Docker：https://docs.docker.com/engine/install/" ;;
             *) install_docker ;;

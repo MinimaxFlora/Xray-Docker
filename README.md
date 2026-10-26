@@ -56,8 +56,18 @@ vless://xxxx@1.2.3.4:443?encryption=mlkem768x25519plus...&type=xhttp&...#Xray
 ...
 ```
 
+交互式部署会依次问你（`curl | bash` 也能正常回答，脚本从 `/dev/tty` 读）：
+
+1. 对外端口（默认 443）
+2. 伪装站点（默认 `www.lovelive-anime.jp`）
+3. 节点名
+4. **域名（可选：填了就顺带申请证书 + 生成 HTTPS 订阅；直接回车跳过）**
+5. 证书联系邮箱（第 4 步填了域名才问）
+
+想完全不提问就用上面的 `--auto`。
+
 > **前置要求**：Linux VPS，`443/tcp` 空闲。Docker 没装也行，脚本会用官方脚本装。
-> 云安全组和系统防火墙记得放行 443。
+> 云安全组和系统防火墙记得放行 443（要订阅再放行 8443，要申请证书还要 80）。
 
 不想装到 `/root`：`XRAY_HOME=/opt/xray curl ... | sudo bash`。
 
@@ -339,6 +349,8 @@ sudo bash manage.sh cert
   Let's Encrypt 会直接以 `invalidContact` 拒绝；非交互可以
   `ACME_EMAIL=you@qq.com sudo bash manage.sh cert`；
 * 之前失败过也没关系：脚本会清掉 `~/.acme.sh/account.conf` 里写坏的 `ACCOUNT_EMAIL` 再重试。
+
+> 部署时如果第 4 步填了域名，证书和订阅会自动跑；也可以事后单独执行下面两步。
 
 ### 2. 生成订阅
 
