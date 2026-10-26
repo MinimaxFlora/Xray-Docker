@@ -860,6 +860,9 @@ proxies:
     reality-opts:
       public-key: "${pub}"
       short-id: "${sid}"
+      # Xray 26.9.8+ 要求 REALITY 握手带 ML-KEM key share，否则服务端判为非法握手
+      # （3x-ui 的 Clash 订阅里同样是这一行）
+      support-x25519mlkem768: true
     xhttp-opts:
       path: "${path}"
       mode: auto
