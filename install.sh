@@ -11,7 +11,7 @@
 #
 # 它做三件事：
 #   1. 没有 Docker 就用官方脚本安装（https://get.docker.com）
-#   2. 用 curl 下载仓库压缩包到 /root/Xray-Docker（不依赖 git）
+#   2. 用 curl 只下载 docker-compose.yml + manage.sh + .env 到 /root/Xray-Docker（不依赖 git）
 #   3. 交给 manage.sh install：拉镜像 → 起容器 → 打印链接/二维码/client.json
 #
 # 可覆盖：
@@ -118,19 +118,28 @@ if ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev
     fi
 fi
 
-# ---------------------------------------------------------------- 下载仓库
-info "下载仓库：$REPO@$BRANCH → $TARGET"
-tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
-
-curl -fL --retry 3 --connect-timeout 15 \
-    "https://github.com/${REPO}/archive/refs/heads/${BRANCH}.tar.gz" \
-    -o "$tmp/repo.tar.gz" || die "下载仓库失败"
-
+# ---------------------------------------------------------------- 只下需要的文件
+# 不需要 git clone，也不要整包 tar：真正要用的只有 docker-compose.yml + manage.sh
+# （.env 只是默认值，已存在就不覆盖，避免冲掉你的端口/域名配置）
+BASE_URL="https://raw.githubusercontent.com/${REPO}/${BRANCH}"
+info "下载配置到 $TARGET"
 mkdir -p "$TARGET"
-tar xzf "$tmp/repo.tar.gz" --strip-components=1 -C "$TARGET" || die "解压失败"
+
+for f in docker-compose.yml manage.sh; do
+    curl -fL --retry 3 --connect-timeout 15 "${BASE_URL}/${f}" -o "$TARGET/${f}" \
+        || die "下载 ${f} 失败"
+done
+
+if [ -f "$TARGET/.env" ]; then
+    info "保留已有的 .env：$TARGET/.env"
+else
+    curl -fL --retry 3 --connect-timeout 15 "${BASE_URL}/.env" -o "$TARGET/.env" \
+        || die "下载 .env 失败"
+    chmod 600 "$TARGET/.env"
+fi
+
 chmod +x "$TARGET/manage.sh" 2>/dev/null || true
-ok "代码已就位：$TARGET"
+ok "文件已就位：$TARGET（docker-compose.yml / manage.sh / .env）"
 
 # ---------------------------------------------------------------- 交给 manage.sh
 cd "$TARGET" || die "无法进入 $TARGET"

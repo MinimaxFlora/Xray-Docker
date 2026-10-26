@@ -31,7 +31,7 @@ curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/Xray-Docker/main/insta
 这条命令会：
 
 1. **没有 Docker 就用官方脚本装**（`https://get.docker.com`，已装则跳过）
-2. 用 curl 把仓库压缩包拉到 `/root/Xray-Docker`（**不需要 git**）
+2. 用 curl **只下载 3 个文件**到 `/root/Xray-Docker`：`docker-compose.yml` + `manage.sh` + `.env`（不需要 git，也不下整包；已有 `.env` 不会覆盖）
 3. 调 `manage.sh install`：拉镜像 → 起容器 → 直接打印 **链接 + 二维码 + 客户端配置**
 
 十几秒后终端弹出：
@@ -178,7 +178,7 @@ xray run -c client.json
 ├── docker-compose.build.yml    # 可选 overlay：本地构建
 ├── Dockerfile                  # 官方 distroless 镜像 + alpine shell 层
 ├── docker/entrypoint.sh        # 生成密钥 → 渲染配置 → 校验 → 启动
-├── install.sh                  # 一键 bootstrap：装 Docker + 拉仓库 + 跑 manage.sh
+├── install.sh                  # 一键 bootstrap：装 Docker + 只下 compose/manage.sh + 跑 install
 ├── manage.sh                   # compose 菜单脚本（安装/链接/二维码/导出）
 ├── .env                        # 镜像 tag / 端口 / 伪装站点 / 节点名
 └── data/                       # 首次启动后出现（挂载进容器）
@@ -292,6 +292,21 @@ IMAGE=ghcr.m.daocloud.io/xtls/xray-core:26.10.21
 
 故意的。服务端 `geoip:cn` + `geosite:cn` 走 `block`，防止服务器被当成回国代理（官方示例同样建议）。
 客户端那侧是 `geoip:cn` / `geosite:cn` 直连，正常上网不受影响。
+
+</details>
+
+<details>
+<summary><b>卡在「对外端口 [443]:」不动</b></summary>
+
+`curl | bash` 时 stdin 是管道，旧版脚本读不到输入。现在会先把 stdin 接到 `/dev/tty`，
+并带 180 秒超时兜底。如果面板/容器控制台没有真正的 tty，直接换成非管道方式：
+
+```bash
+cd /root/Xray-Docker
+sudo bash manage.sh install
+```
+
+或全默认：`sudo NONINTERACTIVE=1 bash manage.sh install`。
 
 </details>
 
