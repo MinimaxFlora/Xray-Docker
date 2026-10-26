@@ -547,7 +547,7 @@ EDIT_ENV() {
 }
 
 INSTALL_CLI() {
-    local wrapper="/usr/local/bin/xray"
+    local wrapper="${XRAY_CLI_PATH:-/usr/local/bin/xray}"
     local target="$SCRIPT_DIR/manage.sh"
 
     if [ ! -f "$target" ]; then
@@ -570,7 +570,7 @@ EOF
     chmod +x "$wrapper"
 
     # 顺手给个首字母大写的别名
-    if [ ! -e /usr/local/bin/Xray ]; then
+    if [ ! -e "${wrapper}Xray" ] && [ "$(dirname "$wrapper")" = "/usr/local/bin" ]; then
         ln -sf "$wrapper" /usr/local/bin/Xray 2>/dev/null || true
     fi
 
