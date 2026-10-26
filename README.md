@@ -19,22 +19,22 @@
 ## ✨ 一键部署
 
 ```bash
-git clone https://github.com/MinimaxFlora/Xray-Docker.git /root/Xray-Docker && cd /root/Xray-Docker && sudo bash manage.sh install
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/Xray-Docker/main/install.sh | sudo bash
 ```
 
-全自动、不问任何问题（默认 443 端口、伪装站点 `www.lovelive-anime.jp`）：
+全自动版（默认 `443` + 伪装站点 `www.lovelive-anime.jp`，全程不问问题）：
 
 ```bash
-git clone https://github.com/MinimaxFlora/Xray-Docker.git /root/Xray-Docker && cd /root/Xray-Docker && sudo NONINTERACTIVE=1 bash manage.sh install
+curl -fsSL https://raw.githubusercontent.com/MinimaxFlora/Xray-Docker/main/install.sh | sudo bash -s -- --auto
 ```
 
-没有 git 的机器：
+这条命令会：
 
-```bash
-curl -fsSL https://github.com/MinimaxFlora/Xray-Docker/archive/refs/heads/main.tar.gz | tar xz -C /root && cd /root/Xray-Docker-main && sudo bash manage.sh install
-```
+1. **没有 Docker 就用官方脚本装**（`https://get.docker.com`，已装则跳过）
+2. 用 curl 把仓库压缩包拉到 `/root/Xray-Docker`（**不需要 git**）
+3. 调 `manage.sh install`：拉镜像 → 起容器 → 直接打印 **链接 + 二维码 + 客户端配置**
 
-十几秒后终端直接弹出这三样，复制 / 扫码即可用：
+十几秒后终端弹出：
 
 ```
 ==================================================
@@ -51,13 +51,15 @@ curl -fsSL https://github.com/MinimaxFlora/Xray-Docker/archive/refs/heads/main.t
 节点链接（复制到 v2rayN：Ctrl+V 导入）
 vless://xxxx@1.2.3.4:443?encryption=mlkem768x25519plus...&type=xhttp&...#Xray
 
-▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄   ← 终端二维码
+▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄   ← 二维码（PNG 也会存一份）
 █ ▄▄▄▄▄ █▀▄█▀▄ █ ▄▄▄▄▄ █
 ...
 ```
 
-> **前置要求**：Linux VPS + Docker（含 Compose v2），`443/tcp` 空闲。
-> 云安全组和系统防火墙都要放行 443。
+> **前置要求**：Linux VPS，`443/tcp` 空闲。Docker 没装也行，脚本会用官方脚本装。
+> 云安全组和系统防火墙记得放行 443。
+
+不想装到 `/root`：`XRAY_HOME=/opt/xray curl ... | sudo bash`。
 
 ---
 
@@ -88,6 +90,8 @@ vless://xxxx@1.2.3.4:443?encryption=mlkem768x25519plus...&type=xhttp&...#Xray
 ```bash
 sudo bash manage.sh
 ```
+
+第一次运行如果没装 Docker，会先问你要不要用官方脚本装（`NONINTERACTIVE=1` 时自动装）。
 
 ```
 基础功能：
@@ -165,6 +169,7 @@ xray run -c client.json
 ├── docker-compose.build.yml    # 可选 overlay：本地构建
 ├── Dockerfile                  # 官方 distroless 镜像 + alpine shell 层
 ├── docker/entrypoint.sh        # 生成密钥 → 渲染配置 → 校验 → 启动
+├── install.sh                  # 一键 bootstrap：装 Docker + 拉仓库 + 跑 manage.sh
 ├── manage.sh                   # compose 菜单脚本（安装/链接/二维码/导出）
 ├── .env                        # 镜像 tag / 端口 / 伪装站点 / 节点名
 └── data/                       # 首次启动后出现（挂载进容器）
@@ -282,6 +287,13 @@ IMAGE=ghcr.m.daocloud.io/xtls/xray-core:26.10.21
 
 宿主机装一下 `qrencode`：`apt install qrencode`（`manage.sh` 也会自动尝试安装）。
 链接本身不受影响；容器镜像里不带它（Alpine 仓库没有这个包）。
+
+**二维码太大 / 不想刷屏**：链接里有 1KB 的后量子密钥，二维码天生密。现在的输出已经是最小边距（`-m 1`），
+PNG 存在 `data/qr-vless.png`（4px/模块）。想完全关掉终端二维码：
+
+```bash
+sudo NO_QR=1 bash manage.sh links
+```
 
 </details>
 

@@ -123,13 +123,44 @@ compose() {
     $COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"
 }
 
-CHECK_ENV() {
-    if ! command -v docker >/dev/null 2>&1; then
-        echo -e "${RED_COLOR}错误：未找到 docker${RES}"
-        echo -e "${YELLOW_COLOR}请先安装 Docker：${RES}"
-        echo -e "  Debian/Ubuntu: apt install docker.io docker-compose-v2"
-        echo -e "  官方脚本      : curl -fsSL https://get.docker.com | sh"
+INSTALL_DOCKER() {
+    echo -e "${BLUE_COLOR}使用 Docker 官方脚本安装（https://get.docker.com）...${RES}"
+    if ! curl -fsSL https://get.docker.com | sh; then
+        echo -e "${RED_COLOR}Docker 安装失败，请手动安装：https://docs.docker.com/engine/install/${RES}"
         exit 1
+    fi
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl enable docker >/dev/null 2>&1 || true
+        systemctl start docker  >/dev/null 2>&1 || true
+    elif command -v rc-service >/dev/null 2>&1; then
+        rc-update add docker default >/dev/null 2>&1 || true
+        rc-service docker start >/dev/null 2>&1 || true
+    fi
+    local i
+    for i in $(seq 1 15); do
+        docker info >/dev/null 2>&1 && break
+        sleep 1
+    done
+    echo -e "${GREEN_COLOR}Docker 已就绪：$(docker --version)${RES}"
+}
+
+CHECK_ENV() {
+    if ! command -v curl >/dev/null 2>&1; then
+        install_pkg curl >/dev/null 2>&1 || true
+    fi
+
+    if ! command -v docker >/dev/null 2>&1; then
+        echo -e "${YELLOW_COLOR}未检测到 Docker${RES}"
+        if [ "$(id -u)" != "0" ]; then
+            echo -e "${RED_COLOR}自动安装需要 root，请用 sudo 运行${RES}"
+            exit 1
+        fi
+        if [ "$NONINTERACTIVE" = "1" ] || ask_yes "是否用官方脚本自动安装 Docker？"; then
+            INSTALL_DOCKER
+        else
+            echo -e "${YELLOW_COLOR}已取消。手动安装：curl -fsSL https://get.docker.com | sh${RES}"
+            exit 1
+        fi
     fi
 
     if ! docker info >/dev/null 2>&1; then
@@ -139,6 +170,11 @@ CHECK_ENV() {
     fi
 
     set_compose_cmd
+    if [ -z "$COMPOSE_CMD" ]; then
+        echo -e "${YELLOW_COLOR}未找到 docker compose，尝试安装插件...${RES}"
+        install_pkg docker-compose-v2 >/dev/null 2>&1 || install_pkg docker-compose-plugin >/dev/null 2>&1 || true
+        set_compose_cmd
+    fi
     if [ -z "$COMPOSE_CMD" ]; then
         echo -e "${RED_COLOR}错误：未找到 docker compose（v2 插件）或 docker-compose${RES}"
         echo -e "${YELLOW_COLOR}Debian/Ubuntu: ${RES}apt install docker-compose-v2"
@@ -237,6 +273,10 @@ SHOW_QR() {
     local text="$1" name="$2"
 
     [ -z "$text" ] && return 0
+    if [ "${NO_QR:-0}" = "1" ]; then
+        echo -e "${YELLOW_COLOR}NO_QR=1，跳过二维码（链接已给出）${RES}"
+        return 0
+    fi
 
     if ! command -v qrencode >/dev/null 2>&1; then
         echo -e "${BLUE_COLOR}安装 qrencode 以显示二维码...${RES}"
@@ -244,10 +284,13 @@ SHOW_QR() {
     fi
 
     if command -v qrencode >/dev/null 2>&1; then
-        echo
-        qrencode -t ANSIUTF8 "$text" 2>/dev/null
-        echo
-        if qrencode -o "$DATA_DIR/qr-$name.png" -s 6 -m 2 "$text" 2>/dev/null; then
+        # 链接很长（后量子密钥），只留 1 格白边；非终端（重定向/日志）不刷屏
+        if [ -t 1 ]; then
+            echo
+            qrencode -t ANSIUTF8 -m 1 "$text" 2>/dev/null
+            echo
+        fi
+        if qrencode -o "$DATA_DIR/qr-$name.png" -s 4 -m 1 "$text" 2>/dev/null; then
             echo -e "${GREEN_COLOR}二维码图片：$DATA_DIR/qr-$name.png${RES}"
         fi
     else

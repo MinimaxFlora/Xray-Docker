@@ -381,8 +381,8 @@ log "client conf : $CLIENT_JSON   (socks 127.0.0.1:10808 / http 127.0.0.1:10809)
 log "server conf : $SERVER_JSON   (managed automatically, no need to touch)"
 printf '\n%s\n\n' "$LINK"
 if command -v qrencode >/dev/null 2>&1; then
-    qrencode -t ANSIUTF8 "$LINK" 2>/dev/null || true
-    qrencode -o "$DATA_DIR/qr-vless.png" -s 6 -m 2 "$LINK" 2>/dev/null \
+    qrencode -t ANSIUTF8 -m 1 "$LINK" 2>/dev/null || true
+    qrencode -o "$DATA_DIR/qr-vless.png" -s 4 -m 1 "$LINK" 2>/dev/null \
         && log "qr code    : $DATA_DIR/qr-vless.png"
     printf '\n'
 fi
