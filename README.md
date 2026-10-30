@@ -9,7 +9,7 @@
 [![build](https://github.com/MinimaxFlora/Xray-Docker/actions/workflows/docker.yml/badge.svg)](https://github.com/MinimaxFlora/Xray-Docker/actions/workflows/docker.yml)
 [![Docker Pulls](https://img.shields.io/docker/pulls/dockorae/xray-core?logo=docker)](https://hub.docker.com/r/dockorae/xray-core)
 [![ghcr.io](https://img.shields.io/badge/ghcr.io-minimaxflora%2Fxray--core-2496ED?logo=github)](https://github.com/MinimaxFlora/Xray-Docker/pkgs/container/xray-core)
-[![Xray](https://img.shields.io/badge/Xray--core-26.10.21-6E4AFF)](https://github.com/XTLS/Xray-core)
+[![Xray](https://img.shields.io/github/v/release/XTLS/Xray-core?label=Xray-core&color=6E4AFF)](https://github.com/XTLS/Xray-core)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 </div>
@@ -179,7 +179,7 @@ xray run -c client.json
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `IMAGE` | `dockorae/xray-core:v26.10.21` | 镜像，tag 跟随内置内核版本 |
+| `IMAGE` | `dockorae/xray-core:latest` | 镜像；`latest` 自动跟随最新内核，也可钉 `:v26.10.29` |
 | `PORT` | `443` | 对外端口（容器内固定 443） |
 | `SNI` | `www.lovelive-anime.jp` | 伪装站点 = REALITY target = serverName |
 | `SERVER_ADDR` | 空 | 公网 IP / 域名，留空自动探测 |
@@ -216,9 +216,9 @@ xray run -c client.json
 改 `.env`：
 
 ```ini
-IMAGE=ghcr.io/minimaxflora/xray-core:v26.10.21
+IMAGE=ghcr.io/minimaxflora/xray-core:latest
 # 或
-IMAGE=ghcr.m.daocloud.io/xtls/xray-core:26.10.21
+IMAGE=ghcr.m.daocloud.io/xtls/xray-core:latest
 ```
 
 再 `sudo bash manage.sh update`。
@@ -376,16 +376,19 @@ mihomo / Clash 订阅：
 | Docker Hub | [`dockorae/xray-core`](https://hub.docker.com/r/dockorae/xray-core) |
 | GHCR | [`ghcr.io/minimaxflora/xray-core`](https://github.com/MinimaxFlora/Xray-Docker/pkgs/container/xray-core) |
 | 架构 | `linux/amd64` + `linux/arm64` |
-| 标签 | `v26.10.21`（跟随内核版本）、`latest` |
+| 标签 | `latest` + `v<内核版本>`（如 `v26.10.29`，自动跟随上游最新 release） |
 
-`.github/workflows/docker.yml` 两个 job：
+`.github/workflows/docker.yml` 三个 job：
 
 | job | 触发 | 干什么 |
 |---|---|---|
+| `resolve` | 所有触发 / 每日定时 | 查 XTLS/Xray-core 最新 release（或手动指定的版本），算出镜像 tag；定时的运行如果该版本已发布就跳过 |
 | `smoke` | push / PR / 手动 | 构建 amd64 镜像 → 跑 `keygen` → 断言 `keys.env` 600、server/client 含 ML-KEM 密钥、链接带 `type=xhttp`/`security=reality`/`flow=xtls-rprx-vision`、`client.json` 有 10808/10809 → 两份配置各跑一次 `xray -test` |
-| `publish` | push 到 `main`、手动 | 多架构构建，推 Docker Hub（需要 `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` 两个 secret）和 ghcr（用内置 `GITHUB_TOKEN`） |
+| `publish` | push 到 `main`、每日定时、手动 | 多架构构建，推 Docker Hub（需要 `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` 两个 secret）和 ghcr（用内置 `GITHUB_TOKEN`） |
 
-升级内核：改 workflow 里的 `XRAY_IMAGE` → 下次构建自动产出 `v<新版本>` 标签。
+升级内核：不用改 workflow。每次运行都会自动解析上游最新版本，产出 `latest` + `v<新版本>`；
+另有每日定时任务，Xray 发版后第二天自动补一次构建。要回滚或钉版本，手动跑
+`Run workflow` 并填 `xray_version`（如 `26.10.21`），这种构建只推 `v26.10.21`，不会动 `latest`。
 
 ---
 

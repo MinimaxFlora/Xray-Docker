@@ -2,12 +2,12 @@
 #
 #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 #
-# The base image (official distroless xray-core) is pinned below; bump it to
-# upgrade the bundled core.
+# The base image (official distroless xray-core) defaults to `latest`, so a
+# local build picks up the newest core; set XRAY_IMAGE to pin a version.
 services:
   xray:
     image: xray-core:local
     build:
       context: .
       args:
-        XRAY_IMAGE: ${XRAY_IMAGE:-ghcr.io/xtls/xray-core:26.10.21}
+        XRAY_IMAGE: ${XRAY_IMAGE:-ghcr.io/xtls/xray-core:latest}

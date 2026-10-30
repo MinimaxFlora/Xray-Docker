@@ -1,8 +1,20 @@
 name: build
 
 # Builds this node image, smoke-tests the config generator, then publishes to
-#   ghcr.io/<owner>/<repo>            (uses the built-in GITHUB_TOKEN)
-#   docker.io/<DOCKERHUB_USERNAME>/xray-xhttp-reality-pq  (needs 2 repo secrets)
+#   ghcr.io/<owner>/<repo>                     (built-in GITHUB_TOKEN, no secret)
+#   docker.io/<DOCKERHUB_USERNAME>/xray-core   (needs 2 repo secrets)
+#
+# The baked-in Xray core follows the newest upstream release, and the image
+# tags follow that core version:
+#
+#   latest  +  v<core version>        e.g.  latest + v26.10.29
+#
+# Nothing is pinned in this file: every run asks the GitHub API for the newest
+# XTLS/Xray-core release. A new upstream release is picked up by the next push,
+# by "Run workflow", or by the daily schedule below.
+#
+# Rollback / test build: workflow_dispatch with xray_version=26.10.21 pushes
+# only v26.10.21 and leaves `latest` untouched.
 #
 # Required secrets for Docker Hub (Settings -> Secrets and variables -> Actions):
 #   DOCKERHUB_USERNAME   your docker hub account name
@@ -12,14 +24,22 @@ name: build
 on:
   push:
     branches: [main, master]
-    tags: ["v*"]
   pull_request:
     branches: [main, master]
   workflow_dispatch:
+    inputs:
+      xray_version:
+        description: "Xray-core version to bake in (e.g. 26.10.29). Empty = newest release."
+        required: false
+        default: ""
+  schedule:
+    # daily: rebuild when upstream ships a new Xray-core release
+    - cron: "23 3 * * *"
+
+permissions:
+  contents: read
 
 env:
-  # official Xray binary that gets baked into the image
-  XRAY_IMAGE: ghcr.io/xtls/xray-core:26.10.21
   # image name used on docker hub (and as the local tag during smoke test)
   IMAGE_NAME: xray-core
 
@@ -29,10 +49,70 @@ concurrency:
 
 jobs:
   # ---------------------------------------------------------------------------
+  # 0. decide which Xray-core release to build and which tags to publish
+  # ---------------------------------------------------------------------------
+  resolve:
+    name: resolve Xray-core version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      image: ${{ steps.v.outputs.image }}
+      publish_latest: ${{ steps.v.outputs.publish_latest }}
+      needs_build: ${{ steps.v.outputs.needs_build }}
+    steps:
+      - name: resolve newest Xray-core release
+        id: v
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REQUESTED: ${{ github.event.inputs.xray_version }}
+          DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          version="${REQUESTED:-}"
+          version="${version#v}"
+          if [ -z "$version" ]; then
+            version=$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" \
+              https://api.github.com/repos/XTLS/Xray-core/releases/latest \
+              | jq -r '.tag_name // empty')
+            version="${version#v}"
+          fi
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::could not resolve a valid Xray-core version (got '${version}')"
+            exit 1
+          fi
+
+          if [ -n "${REQUESTED:-}" ]; then
+            # an explicit pin is a rollback/test build: never move `latest`
+            publish_latest=false
+          else
+            publish_latest=true
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/xtls/xray-core:${version}" >> "$GITHUB_OUTPUT"
+          echo "publish_latest=${publish_latest}" >> "$GITHUB_OUTPUT"
+
+          # only the daily schedule skips when this core version is already out
+          needs_build=true
+          if [ "$EVENT" = "schedule" ] && [ -n "${DOCKERHUB_USER:-}" ]; then
+            url="https://hub.docker.com/v2/repositories/${DOCKERHUB_USER}/${IMAGE_NAME}/tags/v${version}"
+            if curl -fsS -o /dev/null "$url" 2>/dev/null; then
+              needs_build=false
+              echo "v${version} is already published, skipping this scheduled run"
+            fi
+          fi
+          echo "needs_build=${needs_build}" >> "$GITHUB_OUTPUT"
+
+          echo "resolved Xray-core ${version} (publish_latest=${publish_latest})"
+
+  # ---------------------------------------------------------------------------
   # 1. build the image for amd64 and prove that keygen + configs are valid
   # ---------------------------------------------------------------------------
   smoke:
     name: smoke test (keygen + xray -test)
+    needs: resolve
+    if: needs.resolve.outputs.needs_build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -55,7 +135,7 @@ jobs:
           load: true
           tags: local/xray-node:smoke
           build-args: |
-            XRAY_IMAGE=${{ env.XRAY_IMAGE }}
+            XRAY_IMAGE=${{ needs.resolve.outputs.image }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -111,20 +191,24 @@ jobs:
           {
             echo "### smoke test passed"
             echo ""
+            echo "Xray-core: ${XRAY_VERSION}"
+            echo ""
             echo "generated link (truncated):"
             echo ""
             echo '```'
             cut -c1-160 smoke-data/vless-link.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          XRAY_VERSION: ${{ needs.resolve.outputs.version }}
 
   # ---------------------------------------------------------------------------
   # 2. multi-arch build & push (amd64 + arm64)
   # ---------------------------------------------------------------------------
   publish:
     name: publish (ghcr.io + docker hub)
-    needs: smoke
-    if: github.event_name != 'pull_request'
+    needs: [resolve, smoke]
+    if: github.event_name != 'pull_request' && needs.resolve.outputs.needs_build == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -132,6 +216,8 @@ jobs:
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      XRAY_IMAGE: ${{ needs.resolve.outputs.image }}
+      XRAY_VERSION: ${{ needs.resolve.outputs.version }}
     steps:
       - uses: actions/checkout@v7
 
@@ -147,14 +233,7 @@ jobs:
             echo "DOCKERHUB_IMAGE=" >> "$GITHUB_ENV"
             echo "::warning::DOCKERHUB_USERNAME / DOCKERHUB_TOKEN not set, skipping docker hub"
           fi
-          echo "XRAY_IMAGE=${XRAY_IMAGE}" >> "$GITHUB_ENV"
-          # image tag follows the bundled Xray core version, e.g. v26.10.21
-          XRAY_TAG="${XRAY_IMAGE##*:}"
-          case "$XRAY_TAG" in
-            */*|"") echo "::error::XRAY_IMAGE must be pinned to a version, e.g. ghcr.io/xtls/xray-core:26.10.21"; exit 1 ;;
-          esac
-          echo "XRAY_TAG=${XRAY_TAG}" >> "$GITHUB_ENV"
-          echo "Xray core version tag: v${XRAY_TAG}"
+          echo "building Xray-core ${XRAY_VERSION} (${XRAY_IMAGE})"
 
       # ---------------------------- ghcr.io -----------------------------------
       - name: login to ghcr.io
@@ -170,13 +249,14 @@ jobs:
         with:
           images: ${{ env.GHCR_IMAGE }}
           tags: |
-            type=raw,value=v${{ env.XRAY_TAG }}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=v${{ needs.resolve.outputs.version }}
+            type=raw,value=latest,enable=${{ needs.resolve.outputs.publish_latest }}
           labels: |
             org.opencontainers.image.title=Xray XHTTP + REALITY + VLESS Encryption node
             org.opencontainers.image.description=One-click Xray node: XHTTP + VLESS Encryption (ML-KEM-768) + XTLS Vision + REALITY, keys auto generated
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.version=v${{ env.XRAY_TAG }}
+            org.opencontainers.image.version=v${{ needs.resolve.outputs.version }}
+            org.opencontainers.image.base.name=ghcr.io/xtls/xray-core:${{ needs.resolve.outputs.version }}
 
       - name: build & push to ghcr.io
         uses: docker/build-push-action@v7
@@ -188,7 +268,7 @@ jobs:
           tags: ${{ steps.meta_ghcr.outputs.tags }}
           labels: ${{ steps.meta_ghcr.outputs.labels }}
           build-args: |
-            XRAY_IMAGE=${{ env.XRAY_IMAGE }}
+            XRAY_IMAGE=${{ needs.resolve.outputs.image }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -198,7 +278,7 @@ jobs:
         uses: docker/login-action@v4
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
-          password: ${{ env.DOCKERHUB_TOKEN }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: meta (docker hub)
         if: env.DOCKERHUB_IMAGE != ''
@@ -207,12 +287,13 @@ jobs:
         with:
           images: ${{ env.DOCKERHUB_IMAGE }}
           tags: |
-            type=raw,value=v${{ env.XRAY_TAG }}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=v${{ needs.resolve.outputs.version }}
+            type=raw,value=latest,enable=${{ needs.resolve.outputs.publish_latest }}
           labels: |
             org.opencontainers.image.title=Xray XHTTP + REALITY + VLESS Encryption node
             org.opencontainers.image.description=One-click Xray node: XHTTP + VLESS Encryption (ML-KEM-768) + XTLS Vision + REALITY, keys auto generated
-            org.opencontainers.image.version=v${{ env.XRAY_TAG }}
+            org.opencontainers.image.version=v${{ needs.resolve.outputs.version }}
+            org.opencontainers.image.base.name=ghcr.io/xtls/xray-core:${{ needs.resolve.outputs.version }}
 
       - name: build & push to docker hub
         if: env.DOCKERHUB_IMAGE != ''
@@ -225,7 +306,7 @@ jobs:
           tags: ${{ steps.meta_dockerhub.outputs.tags }}
           labels: ${{ steps.meta_dockerhub.outputs.labels }}
           build-args: |
-            XRAY_IMAGE=${{ env.XRAY_IMAGE }}
+            XRAY_IMAGE=${{ needs.resolve.outputs.image }}
           # the ghcr build above already filled the cache, so this is cheap
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -255,7 +336,7 @@ jobs:
       - name: summary (publish)
         run: |
           {
-            echo "### published"
+            echo "### published Xray-core ${XRAY_VERSION}"
             echo ""
             echo "ghcr.io:"
             echo '```'

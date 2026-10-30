@@ -6,9 +6,11 @@
 #  same official binary + geo data into a tiny Alpine layer that does have
 #  a POSIX shell, wget and ca-certificates.
 #
-#  Override the base with e.g.  XRAY_IMAGE=ghcr.io/xtls/xray-core:latest
+#  Default is `latest`, i.e. the newest Xray-core release; the CI always passes
+#  an explicit version (resolved from the upstream release) instead.
+#  Override the base with e.g.  XRAY_IMAGE=ghcr.io/xtls/xray-core:26.10.29
 # ---------------------------------------------------------------------------
-ARG XRAY_IMAGE=ghcr.io/xtls/xray-core:26.10.21
+ARG XRAY_IMAGE=ghcr.io/xtls/xray-core:latest
 
 FROM ${XRAY_IMAGE} AS xray
 

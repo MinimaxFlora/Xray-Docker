@@ -56,7 +56,7 @@ SUB_DIR="$DATA_DIR/sub"
 ACME="$HOME/.acme.sh/acme.sh"
 INFO_FILE="$DATA_DIR/connection-info.txt"
 
-DEFAULT_IMAGE="dockorae/xray-core:v26.10.21"
+DEFAULT_IMAGE="dockorae/xray-core:latest"
 DEFAULT_PORT="443"
 DEFAULT_SNI="www.lovelive-anime.jp"
 DEFAULT_NODE_NAME="Xray"
@@ -360,9 +360,9 @@ INSTALL() {
     if ! compose pull; then
         echo -e "${RED_COLOR}镜像拉取失败${RES}"
         echo -e "${YELLOW_COLOR}国内 VPS 可以改 .env 里的 IMAGE，例如：${RES}"
-        echo -e "  IMAGE=ghcr.io/minimaxflora/xray-core:v26.10.21"
+        echo -e "  IMAGE=ghcr.io/minimaxflora/xray-core:latest"
         echo -e "${YELLOW_COLOR}或者用国内加速：${RES}"
-        echo -e "  IMAGE=ghcr.m.daocloud.io/xtls/xray-core:26.10.21"
+        echo -e "  IMAGE=ghcr.m.daocloud.io/xtls/xray-core:latest"
         return 1
     fi
 
