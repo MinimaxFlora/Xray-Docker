@@ -240,7 +240,6 @@ sudo bash manage.sh update
 ```
 
 `docker compose ps` / 菜单里的「状态」可以看到新镜像。
-新版 `manage.sh` 检测到旧的 `v26.10.21` 会自动帮你切到 `latest`。
 
 </details>
 

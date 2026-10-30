@@ -403,21 +403,6 @@ UPDATE() {
     local image
     image=$(env_get IMAGE "$DEFAULT_IMAGE")
     echo -e "${BLUE_COLOR}当前镜像：$image${RES}"
-
-    # 旧版本的默认 IMAGE 把 tag 钉死在内核版本上（v26.10.21），update 只会
-    # 反复拉这个旧内核，看起来像"更新没生效"。一次性迁移到 latest。
-    case "${image##*:}" in
-        v26.10.21)
-            image="${image%:*}:latest"
-            env_set IMAGE "$image"
-            echo -e "${YELLOW_COLOR}检测到旧默认 tag v26.10.21，已切换为 latest（跟随最新内核）${RES}"
-            ;;
-        latest) ;;
-        *)
-            echo -e "${YELLOW_COLOR}提示：当前固定 ${image##*:}，不会跟随上游发版；要跟最新内核请改成 ${image%:*}:latest${RES}"
-            ;;
-    esac
-
     echo -e "${GREEN_COLOR}拉取最新镜像 ...${RES}"
     compose pull || { echo -e "${RED_COLOR}拉取失败${RES}"; return 1; }
     compose up -d || { echo -e "${RED_COLOR}重启失败${RES}"; return 1; }
