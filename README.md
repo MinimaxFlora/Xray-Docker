@@ -226,6 +226,25 @@ IMAGE=ghcr.m.daocloud.io/xtls/xray-core:latest
 </details>
 
 <details>
+<summary><b>更新镜像后还是旧内核（比如一直停在 26.10.21）</b></summary>
+
+`manage.sh update` 只拉 `.env` 里 `IMAGE` 写的那个 tag，不会自己改 tag。
+早期版本的默认值把 tag 钉在内核版本上（`dockorae/xray-core:v26.10.21`），所以会一直拉旧内核。
+
+把 tag 改成 `latest`（跟随最新内核）再更新：
+
+```bash
+cd /root/Xray-Docker
+sudo sed -i -E 's#^(IMAGE=.*):v26\.10\.21$#\1:latest#' .env
+sudo bash manage.sh update
+```
+
+`docker compose ps` / 菜单里的「状态」可以看到新镜像。
+新版 `manage.sh` 检测到旧的 `v26.10.21` 会自动帮你切到 `latest`。
+
+</details>
+
+<details>
 <summary><b>链接里出现 YOUR_SERVER_IP</b></summary>
 
 容器探测不到公网 IP。在 `.env` 里写死 `SERVER_ADDR=<IP或域名>`，然后
